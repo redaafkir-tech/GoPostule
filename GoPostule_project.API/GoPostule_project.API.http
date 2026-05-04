@@ -1,0 +1,6 @@
+@GoPostule_project.API_HostAddress = http://localhost:5134
+
+GET {{GoPostule_project.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

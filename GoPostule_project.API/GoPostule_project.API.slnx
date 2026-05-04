@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../GoPostule_project.Data/GoPostule_project.Data.csproj" Id="f9bf8dd8-8663-480c-9a98-6f6f70a1e849" />
+  <Project Path="GoPostule_project.API.csproj" />
+</Solution>
