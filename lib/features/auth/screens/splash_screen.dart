@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/storage_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -63,11 +64,20 @@ class _SplashScreenState extends State<SplashScreen>
     _controller.forward();
 
     // Après 3 secondes → naviguer vers Login
-    Future.delayed(const Duration(seconds: 3), () {
+    Future.delayed(const Duration(seconds: 3), () async {
       if (mounted) {
-        // mounted vérifie que le widget existe encore avant de naviguer
-        Navigator.pushReplacementNamed(context, '/login');
-        // pushReplacement = remplace le splash, l'utilisateur ne peut pas revenir en arrière
+        // Vérifier si token existe
+        final loggedIn = await StorageService.isLoggedIn();
+
+        if (mounted) {
+          if (loggedIn) {
+            // Déjà connecté → aller directement à l'accueil
+            Navigator.pushReplacementNamed(context, '/home');
+          } else {
+            // Pas connecté → aller au login
+            Navigator.pushReplacementNamed(context, '/login');
+          }
+        }
       }
     });
   }

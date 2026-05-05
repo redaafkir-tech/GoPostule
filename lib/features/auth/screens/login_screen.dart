@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/auth_service.dart';
+import '../../../core/services/storage_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -32,18 +34,38 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Fonction appelée quand l'utilisateur appuie sur "Se connecter"
   Future<void> _handleLogin() async {
-    // Vérifie que tous les champs sont valides avant d'envoyer
+    // Vérifie que tous les champs sont valides
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true); // Affiche le loading
+    setState(() => _isLoading = true);
 
-    // TODO Phase 2 : appel API auth_service.dart
-    await Future.delayed(const Duration(seconds: 2)); // Simulation
+    try {
+      // ── APPEL API LOGIN ──────────────────────────────
+      final result = await AuthService.login(
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
 
-    setState(() => _isLoading = false);
+//  Majuscules comme le backend
+      await StorageService.saveToken(result['Token']);
 
-    if (mounted) {
-      Navigator.pushReplacementNamed(context, '/home');
+      // Naviguer vers l'accueil
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+
+    } catch (e) {
+      // Afficher l'erreur
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
