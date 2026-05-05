@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "Fxe3zAx91oQ=",
+  "dgSpecHash": "lZhilPg+8ik=",
   "success": true,
-  "projectFilePath": "E:\\GoPostule_project.API\\GoPostule_project.API.csproj",
+  "projectFilePath": "D:\\Back-end\\GoPostule_project.API\\GoPostule_project.API.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\redaa\\.nuget\\packages\\azure.core\\1.47.1\\azure.core.1.47.1.nupkg.sha512",
     "C:\\Users\\redaa\\.nuget\\packages\\azure.identity\\1.14.2\\azure.identity.1.14.2.nupkg.sha512",
@@ -151,9 +151,9 @@
       "code": "NU1901",
       "level": "Warning",
       "message": "Le package 'NuGet.Packaging' 6.12.1 présente une vulnérabilité de gravité faible connue, https://github.com/advisories/GHSA-g4vj-cjjj-v7hg.",
-      "projectPath": "E:\\GoPostule_project.API\\GoPostule_project.API.csproj",
+      "projectPath": "D:\\Back-end\\GoPostule_project.API\\GoPostule_project.API.csproj",
       "warningLevel": 1,
-      "filePath": "E:\\GoPostule_project.API\\GoPostule_project.API.csproj",
+      "filePath": "D:\\Back-end\\GoPostule_project.API\\GoPostule_project.API.csproj",
       "libraryId": "NuGet.Packaging",
       "targetGraphs": [
         "net10.0"
@@ -163,9 +163,9 @@
       "code": "NU1901",
       "level": "Warning",
       "message": "Le package 'NuGet.Protocol' 6.12.1 présente une vulnérabilité de gravité faible connue, https://github.com/advisories/GHSA-g4vj-cjjj-v7hg.",
-      "projectPath": "E:\\GoPostule_project.API\\GoPostule_project.API.csproj",
+      "projectPath": "D:\\Back-end\\GoPostule_project.API\\GoPostule_project.API.csproj",
       "warningLevel": 1,
-      "filePath": "E:\\GoPostule_project.API\\GoPostule_project.API.csproj",
+      "filePath": "D:\\Back-end\\GoPostule_project.API\\GoPostule_project.API.csproj",
       "libraryId": "NuGet.Protocol",
       "targetGraphs": [
         "net10.0"

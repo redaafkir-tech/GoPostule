@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "E:\\GoPostule_project.API\\GoPostule_project.API.csproj": {}
+    "D:\\Back-end\\GoPostule_project.API\\GoPostule_project.API.csproj": {}
   },
   "projects": {
-    "E:\\GoPostule_project.API\\GoPostule_project.API.csproj": {
+    "D:\\Back-end\\GoPostule_project.API\\GoPostule_project.API.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "E:\\GoPostule_project.API\\GoPostule_project.API.csproj",
+        "projectUniqueName": "D:\\Back-end\\GoPostule_project.API\\GoPostule_project.API.csproj",
         "projectName": "GoPostule_project.API",
-        "projectPath": "E:\\GoPostule_project.API\\GoPostule_project.API.csproj",
+        "projectPath": "D:\\Back-end\\GoPostule_project.API\\GoPostule_project.API.csproj",
         "packagesPath": "C:\\Users\\redaa\\.nuget\\packages\\",
-        "outputPath": "E:\\GoPostule_project.API\\obj\\",
+        "outputPath": "D:\\Back-end\\GoPostule_project.API\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -31,11 +31,10 @@
         },
         "frameworks": {
           "net10.0": {
-            "framework": "net10.0",
             "targetAlias": "net10.0",
             "projectReferences": {
-              "E:\\GoPostule_project.Data\\GoPostule_project.Data.csproj": {
-                "projectPath": "E:\\GoPostule_project.Data\\GoPostule_project.Data.csproj"
+              "D:\\Back-end\\GoPostule_project.Data\\GoPostule_project.Data.csproj": {
+                "projectPath": "D:\\Back-end\\GoPostule_project.Data\\GoPostule_project.Data.csproj"
               }
             }
           }
@@ -54,7 +53,6 @@
       },
       "frameworks": {
         "net10.0": {
-          "framework": "net10.0",
           "targetAlias": "net10.0",
           "dependencies": {
             "BCrypt.Net-Next": {
@@ -531,14 +529,14 @@
         }
       }
     },
-    "E:\\GoPostule_project.Data\\GoPostule_project.Data.csproj": {
+    "D:\\Back-end\\GoPostule_project.Data\\GoPostule_project.Data.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "E:\\GoPostule_project.Data\\GoPostule_project.Data.csproj",
+        "projectUniqueName": "D:\\Back-end\\GoPostule_project.Data\\GoPostule_project.Data.csproj",
         "projectName": "GoPostule_project.Data",
-        "projectPath": "E:\\GoPostule_project.Data\\GoPostule_project.Data.csproj",
+        "projectPath": "D:\\Back-end\\GoPostule_project.Data\\GoPostule_project.Data.csproj",
         "packagesPath": "C:\\Users\\redaa\\.nuget\\packages\\",
-        "outputPath": "E:\\GoPostule_project.Data\\obj\\",
+        "outputPath": "D:\\Back-end\\GoPostule_project.Data\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -558,7 +556,6 @@
         },
         "frameworks": {
           "net10.0": {
-            "framework": "net10.0",
             "targetAlias": "net10.0",
             "projectReferences": {}
           }
@@ -577,7 +574,6 @@
       },
       "frameworks": {
         "net10.0": {
-          "framework": "net10.0",
           "targetAlias": "net10.0",
           "dependencies": {
             "BCrypt.Net-Next": {
