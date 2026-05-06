@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../../core/services/auth_service.dart';
 import '../../../core/theme/app_theme.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -40,14 +39,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     // TODO Phase 2 : appel API auth_service.dart
     await Future.delayed(const Duration(seconds: 2));
-
-    await AuthService.register(
-      nom:       _nomController.text.trim(),
-      prenom:    _prenomController.text.trim(),
-      email:     _emailController.text.trim(),
-      password:  _passwordController.text.trim(),
-      telephone: "0000000000",
-    );
 
     setState(() => _isLoading = false);
 

@@ -1,16 +1,23 @@
 class ApiConstants {
+  // 10.0.2.2 = adresse spéciale émulateur Android qui pointe vers ton PC
+  // Quand tu passes en production tu changes juste cette ligne
+  static const String baseUrl = 'http://10.0.2.2:5000/api';
 
-  // Émulateur Android → 10.0.2.2 remplace localhost
-  static const String baseUrl = "http://localhost:5000";
+  // Auth
+  static const String login    = '$baseUrl/auth/login';
+  static const String register = '$baseUrl/auth/register';
+  static const String me       = '$baseUrl/auth/me';
 
+  // Offres
+  static const String offres       = '$baseUrl/offres';
+  static const String offresSearch = '$baseUrl/offres/search';
 
-  // Si vrai téléphone → mettre votre IP
-  // static const String baseUrl = "http://192.168.0.193:5000";
+  // Dossier
+  static const String dossiers = '$baseUrl/dossiers';
 
-  static const String register     = "$baseUrl/api/auth/register";
-  static const String login        = "$baseUrl/api/auth/login";
-  static const String me           = "$baseUrl/api/auth/me";
-  static const String offres       = "$baseUrl/api/offres";
-  static const String candidatures = "$baseUrl/api/candidatures";
-  static const String dossiers     = "$baseUrl/api/dossiers";
+  // Candidatures
+  static const String candidatures = '$baseUrl/candidatures';
+
+  // Réclamations
+  static const String reclamations = '$baseUrl/reclamations';
 }
