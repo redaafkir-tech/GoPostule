@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
-// import '../../../core/theme/app_theme.dart';
+import 'package:gopostule/features/auth/screens/profil_screen.dart';
+import 'package:gopostule/features/candidatures/screens/candidatures_screen.dart' hide CandidaturesScreen;
+import '../../../features/offres/screens/offres_screen.dart';
+import '../../offres/screens/offres_screen.dart';
+import '../../candidatures/screens/candidatures_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,10 +18,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Les 4 pages de la navbar — on les remplira une par une
   final List<Widget> _pages = [
-    const _OffresPage(),
-    const _CandidaturesPage(),
+    const OffresScreen(),
+    const CandidaturesScreen(),
     const _DossierPage(),
-    const _ProfilPage(),
+    const ProfilScreen(),
   ];
 
   @override

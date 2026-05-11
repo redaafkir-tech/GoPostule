@@ -1,7 +1,7 @@
 class ApiConstants {
   // 10.0.2.2 = adresse spéciale émulateur Android qui pointe vers ton PC
   // Quand tu passes en production tu changes juste cette ligne
-  static const String baseUrl = 'http://10.0.2.2:5000/api';
+  static const String baseUrl = 'http://localhost:5000/api';
 
   // Auth
   static const String login    = '$baseUrl/auth/login';
