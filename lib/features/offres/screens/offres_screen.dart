@@ -1,7 +1,12 @@
+// lib/features/offres/screens/offres_screen.dart
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/offre_service.dart';
+import '../../../core/services/candidature_service.dart';
 import '../../../shared/offre.dart';
 import '../widgets/offre_card.dart';
+import '../../candidatures/screens/postuler_screen.dart';
 
 class OffresScreen extends StatefulWidget {
   const OffresScreen({super.key});
@@ -10,12 +15,23 @@ class OffresScreen extends StatefulWidget {
   State<OffresScreen> createState() => _OffresScreenState();
 }
 
-class _OffresScreenState extends State<OffresScreen> {
+class _OffresScreenState extends State<OffresScreen>
+    with SingleTickerProviderStateMixin {
   final _searchController = TextEditingController();
+  final _offreService = OffreService();
+  final _candidatureService = CandidatureService();
+
+  List<Offre> _offres = [];
+  List<int> _offresPostulees = [];
+  bool _isLoading = true;
+  String? _error;
+  bool _showFilters = false;
 
   String? _selectedSecteur;
-  String? _selectedNiveau;
   String? _selectedVille;
+
+  late AnimationController _animController;
+  late Animation<double> _fadeAnimation;
 
   final List<String> _secteurs = [
     'Tous', 'Développement', 'Infrastructure', 'Finance',
@@ -23,11 +39,6 @@ class _OffresScreenState extends State<OffresScreen> {
     'Comptabilité', 'Audit', 'Communication', 'Data & IA',
     'Cybersécurité', 'Cloud & DevOps', 'Enseignement',
     'BTP & Génie Civil', 'Agriculture', 'Tourisme',
-  ];
-
-  final List<String> _niveaux = [
-    'Tous', 'Bac+2', 'Bac+3', 'Bac+4', 'Bac+5',
-    'Ingénieur d\'état', 'Master', 'Doctorat', 'MBA',
   ];
 
   final List<String> _villes = [
@@ -42,84 +53,113 @@ class _OffresScreenState extends State<OffresScreen> {
     'Fquih Ben Salah', 'El Kelaâ des Sraghna',
   ];
 
-  final List<Offre> _offres = [
-    Offre(
-      id: 1,
-      titre: 'Développeur Flutter',
-      entreprise: 'TechCorp',
-      ville: 'Casablanca',
-      secteur: 'Développement',
-      niveau: 'Bac+5',
-      description: 'Nous recherchons un développeur Flutter passionné pour rejoindre notre équipe mobile. Vous serez responsable du développement et de la maintenance d\'applications cross-platform performantes.',
-      datePublication: DateTime(2025, 4, 1),
-    ),
-    Offre(
-      id: 2,
-      titre: 'Analyste Financier',
-      entreprise: 'BanqueMaroc SA',
-      ville: 'Rabat',
-      secteur: 'Finance',
-      niveau: 'Bac+3',
-      description: 'Poste d\'analyste financier au sein de notre département finances. Vous aurez en charge l\'analyse des marchés, la préparation des rapports financiers et le suivi des indicateurs de performance.',
-      datePublication: DateTime(2025, 4, 10),
-    ),
-    Offre(
-      id: 3,
-      titre: 'Ingénieur Réseau & Sécurité',
-      entreprise: 'NetSolutions',
-      ville: 'Tanger',
-      secteur: 'Infrastructure',
-      niveau: 'Ingénieur d\'état',
-      description: 'Rejoignez notre équipe infrastructure pour gérer et sécuriser nos réseaux d\'entreprise. Vous interviendrez sur la configuration des équipements réseau, la mise en place de politiques de sécurité et la supervision des systèmes.',
-      datePublication: DateTime(2025, 4, 15),
-    ),
-    Offre(
-      id: 4,
-      titre: 'Développeur .NET Senior',
-      entreprise: 'SoftHouse',
-      ville: 'Casablanca',
-      secteur: 'Développement',
-      niveau: 'Bac+5',
-      description: 'Nous cherchons un développeur .NET expérimenté pour renforcer notre équipe backend. Vous concevrez et développerez des APIs RESTful robustes, intégrerez des bases de données SQL Server et participerez à l\'architecture des solutions.',
-      datePublication: DateTime(2025, 4, 18),
-    ),
-  ];
-
-  List<Offre> get _offresFiltrees {
-    return _offres.where((offre) {
-      final query = _searchController.text.toLowerCase();
-      final matchSearch = query.isEmpty ||
-          offre.titre.toLowerCase().contains(query) ||
-          offre.entreprise.toLowerCase().contains(query);
-
-      final matchSecteur = _selectedSecteur == null ||
-          offre.secteur == _selectedSecteur;
-
-      final matchNiveau = _selectedNiveau == null ||
-          offre.niveau == _selectedNiveau;
-
-      final matchVille = _selectedVille == null ||
-          offre.ville == _selectedVille;
-
-      return matchSearch && matchSecteur && matchNiveau && matchVille;
-    }).toList();
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _animController,
+      curve: Curves.easeInOut,
+    );
+    _loadOffres();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _animController.dispose();
     super.dispose();
   }
 
-  // Popup détail offre — description complète + bouton postuler
+  void _toggleFilters() {
+    setState(() => _showFilters = !_showFilters);
+    if (_showFilters) {
+      _animController.forward();
+    } else {
+      _animController.reverse();
+    }
+  }
+
+  void _resetFilters() {
+    setState(() {
+      _selectedSecteur = null;
+      _selectedVille = null;
+    });
+  }
+
+  bool get _hasActiveFilters =>
+      _selectedSecteur != null || _selectedVille != null;
+
+  Future<void> _loadOffres() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final results = await Future.wait([
+        _offreService.getAllOffres(),
+        _candidatureService.getMesCandidatures(),
+      ]);
+
+      final offres = results[0] as List<Offre>;
+      final candidatures = results[1] as List<dynamic>;
+
+      final offresPostulees = candidatures
+          .map((c) => c['Offre']['Id'] as int)
+          .toList();
+
+      setState(() {
+        _offres = offres;
+        _offresPostulees = offresPostulees;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  List<Offre> get _offresFiltrees {
+    return _offres.where((offre) {
+      if (_offresPostulees.contains(offre.id)) return false;
+      final query = _searchController.text.toLowerCase();
+      final matchSearch = query.isEmpty ||
+          offre.titre.toLowerCase().contains(query) ||
+          offre.entreprise.toLowerCase().contains(query);
+      final matchSecteur = _selectedSecteur == null ||
+          offre.secteur == _selectedSecteur;
+      final matchVille = _selectedVille == null ||
+          offre.localisation == _selectedVille;
+      return matchSearch && matchSecteur && matchVille;
+    }).toList();
+  }
+
+  void _navigateToPostuler(Offre offre) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PostulerScreen(offre: offre),
+      ),
+    ).then((_) => _loadOffres());
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
+  }
+
   void _showOffreDetail(BuildContext context, Offre offre) {
     showModalBottomSheet(
       context: context,
-      // isScrollControlled = le bottom sheet peut prendre plus de 50% de l'écran
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DraggableScrollableSheet(
-        // initialChildSize = taille initiale (75% de l'écran)
         initialChildSize: 0.75,
         minChildSize: 0.5,
         maxChildSize: 0.95,
@@ -130,7 +170,6 @@ class _OffresScreenState extends State<OffresScreen> {
           ),
           child: Column(
             children: [
-              // Handle — la petite barre grise en haut du bottom sheet
               Container(
                 margin: const EdgeInsets.only(top: 12),
                 width: 40,
@@ -140,16 +179,13 @@ class _OffresScreenState extends State<OffresScreen> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-
               Expanded(
                 child: ListView(
                   controller: scrollController,
                   padding: const EdgeInsets.all(24),
                   children: [
-                    // En-tête : logo entreprise + titre
                     Row(
                       children: [
-                        // Logo entreprise — cercle avec initiales
                         Container(
                           width: 56,
                           height: 56,
@@ -159,7 +195,6 @@ class _OffresScreenState extends State<OffresScreen> {
                           ),
                           child: Center(
                             child: Text(
-                              // Prend les 2 premières lettres de l'entreprise
                               offre.entreprise.substring(0, 2).toUpperCase(),
                               style: const TextStyle(
                                 fontSize: 20,
@@ -169,95 +204,99 @@ class _OffresScreenState extends State<OffresScreen> {
                             ),
                           ),
                         ),
-
                         const SizedBox(width: 16),
-
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                offre.titre,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textDark,
-                                ),
-                              ),
+                              Text(offre.titre,
+                                  style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textDark)),
                               const SizedBox(height: 4),
-                              Text(
-                                offre.entreprise,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: AppColors.textGrey,
-                                ),
-                              ),
+                              Text(offre.entreprise,
+                                  style: const TextStyle(
+                                      fontSize: 14,
+                                      color: AppColors.textGrey)),
                             ],
                           ),
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 20),
-
-                    // Tags : secteur, niveau, ville
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        _buildTag(Icons.work_outline, offre.secteur, AppColors.accent, AppColors.primary),
-                        _buildTag(Icons.school_outlined, offre.niveau, const Color(0xFFE8F0FE), const Color(0xFF185FA5)),
-                        _buildTag(Icons.location_on_outlined, offre.ville, const Color(0xFFE8F5E9), const Color(0xFF2E7D32)),
+                        _buildTag(Icons.work_outline, offre.secteur,
+                            AppColors.accent, AppColors.primary),
+                        _buildTag(Icons.business_center_outlined,
+                            offre.typeContrat,
+                            const Color(0xFFE8F0FE),
+                            const Color(0xFF185FA5)),
+                        _buildTag(Icons.location_on_outlined, offre.localisation,
+                            const Color(0xFFE8F5E9),
+                            const Color(0xFF2E7D32)),
                       ],
                     ),
-
                     const SizedBox(height: 20),
-
-                    // Date
-                    Row(
-                      children: [
-                        const Icon(Icons.calendar_today_outlined, size: 14, color: AppColors.textGrey),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Publié le ${offre.datePublication.day}/${offre.datePublication.month}/${offre.datePublication.year}',
-                          style: const TextStyle(fontSize: 12, color: AppColors.textGrey),
-                        ),
-                      ],
-                    ),
-
+                    if (offre.dateLimite != null)
+                      Row(
+                        children: [
+                          const Icon(Icons.calendar_today_outlined,
+                              size: 14, color: AppColors.textGrey),
+                          const SizedBox(width: 6),
+                          Text('Date limite : ${offre.dateLimite}',
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppColors.textGrey)),
+                        ],
+                      ),
                     const SizedBox(height: 24),
-
                     const Divider(height: 1, color: Color(0xFFF0F0F0)),
-
                     const SizedBox(height: 24),
-
-                    // Description
-                    const Text(
-                      'Description du poste',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textDark,
-                      ),
-                    ),
-
+                    const Text('Description du poste',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textDark)),
                     const SizedBox(height: 12),
-
-                    Text(
-                      offre.description,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textGrey,
-                        height: 1.7, // Interligne pour meilleure lisibilité
-                      ),
-                    ),
-
+                    Text(offre.description,
+                        style: const TextStyle(
+                            fontSize: 14,
+                            color: AppColors.textGrey,
+                            height: 1.7)),
+                    if (offre.missions != null) ...[
+                      const SizedBox(height: 20),
+                      const Text('Missions',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textDark)),
+                      const SizedBox(height: 12),
+                      Text(offre.missions!,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textGrey,
+                              height: 1.7)),
+                    ],
+                    if (offre.competences != null) ...[
+                      const SizedBox(height: 20),
+                      const Text('Compétences requises',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textDark)),
+                      const SizedBox(height: 12),
+                      Text(offre.competences!,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              color: AppColors.textGrey,
+                              height: 1.7)),
+                    ],
                     const SizedBox(height: 32),
-
-                    // Boutons Fermer + Postuler
                     Row(
                       children: [
-                        // Bouton Fermer
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () => Navigator.pop(context),
@@ -266,49 +305,31 @@ class _OffresScreenState extends State<OffresScreen> {
                               foregroundColor: AppColors.primary,
                               minimumSize: const Size(0, 48),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                                  borderRadius: BorderRadius.circular(12)),
                             ),
                             child: const Text('Fermer'),
                           ),
                         ),
-
                         const SizedBox(width: 12),
-
-                        // Bouton Postuler
                         Expanded(
                           flex: 2,
                           child: ElevatedButton.icon(
+                            // ✅ CORRECTION ICI : onPressed (pas oonPressed)
                             onPressed: () {
                               Navigator.pop(context);
-                              // Snackbar confirmation
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Candidature envoyée pour ${offre.titre}',
-                                  ),
-                                  backgroundColor: AppColors.primary,
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                              );
+                              _navigateToPostuler(offre);
                             },
-                            // Icon avion en papier
                             icon: const Icon(Icons.send_rounded, size: 18),
                             label: const Text('Postuler'),
                             style: ElevatedButton.styleFrom(
                               minimumSize: const Size(0, 48),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                                  borderRadius: BorderRadius.circular(12)),
                             ),
                           ),
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 16),
                   ],
                 ),
@@ -320,103 +341,214 @@ class _OffresScreenState extends State<OffresScreen> {
     );
   }
 
-  // Helper — construit un tag avec icône + texte
   Widget _buildTag(IconData icon, String label, Color bg, Color textColor) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(8),
-      ),
+          color: bg, borderRadius: BorderRadius.circular(8)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 13, color: textColor),
           const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: textColor,
-            ),
-          ),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: textColor)),
         ],
       ),
     );
   }
 
-  Widget _buildFilterRow(
-      String label,
-      List<String> options,
-      String? selected,
-      Function(String?) onSelect,
-      ) {
+  Widget _buildFilterPanel() {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SizeTransition(
+        sizeFactor: _fadeAnimation,
+        axisAlignment: -1,
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Filtres',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  if (_hasActiveFilters)
+                    TextButton.icon(
+                      onPressed: _resetFilters,
+                      icon: const Icon(Icons.refresh_rounded,
+                          size: 16, color: AppColors.primary),
+                      label: const Text(
+                        'Réinitialiser',
+                        style: TextStyle(
+                            fontSize: 12, color: AppColors.primary),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildDropdown(
+                label: 'Secteur',
+                icon: Icons.work_outline,
+                value: _selectedSecteur,
+                items: _secteurs.where((s) => s != 'Tous').toList(),
+                onChanged: (val) =>
+                    setState(() => _selectedSecteur = val),
+                hint: 'Tous les secteurs',
+              ),
+              const SizedBox(height: 10),
+              _buildDropdown(
+                label: 'Ville',
+                icon: Icons.location_on_outlined,
+                value: _selectedVille,
+                items: _villes.where((v) => v != 'Toutes').toList(),
+                onChanged: (val) =>
+                    setState(() => _selectedVille = val),
+                hint: 'Toutes les villes',
+              ),
+              if (_hasActiveFilters) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    if (_selectedSecteur != null)
+                      _buildActiveBadge(
+                          _selectedSecteur!,
+                              () => setState(
+                                  () => _selectedSecteur = null)),
+                    if (_selectedVille != null)
+                      _buildActiveBadge(_selectedVille!,
+                              () => setState(() => _selectedVille = null)),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdown({
+    required String label,
+    required IconData icon,
+    required String? value,
+    required List<String> items,
+    required Function(String?) onChanged,
+    required String hint,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 16, bottom: 8),
-          child: Text(
-            label.toUpperCase(),
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textGrey,
-              letterSpacing: 0.8,
+        Text(
+          label.toUpperCase(),
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textGrey,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: value != null
+                  ? AppColors.primary
+                  : const Color(0xFFE8E8E8),
+              width: value != null ? 1.5 : 1,
+            ),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: value,
+              hint: Row(
+                children: [
+                  Icon(icon, size: 16, color: AppColors.textGrey),
+                  const SizedBox(width: 8),
+                  Text(hint,
+                      style: const TextStyle(
+                          fontSize: 13, color: AppColors.textGrey)),
+                ],
+              ),
+              isExpanded: true,
+              icon: const Icon(Icons.keyboard_arrow_down_rounded,
+                  color: AppColors.textGrey, size: 20),
+              style: const TextStyle(
+                  fontSize: 13, color: AppColors.textDark),
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              items: items
+                  .map((item) => DropdownMenuItem(
+                value: item,
+                child: Text(item),
+              ))
+                  .toList(),
+              onChanged: onChanged,
             ),
           ),
         ),
-        SizedBox(
-          height: 34,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: options.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final option = options[index];
-              final isSelected = selected == option ||
-                  ((option == 'Tous' || option == 'Toutes') &&
-                      selected == null);
-
-              return GestureDetector(
-                onTap: () => onSelect(
-                  (option == 'Tous' || option == 'Toutes') ? null : option,
-                ),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOut,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isSelected ? AppColors.accent : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isSelected
-                          ? AppColors.accent
-                          : const Color(0xFFE8E8E8),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Text(
-                    option,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isSelected
-                          ? AppColors.primary
-                          : AppColors.textGrey,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
       ],
+    );
+  }
+
+  Widget _buildActiveBadge(String label, VoidCallback onRemove) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+            color: AppColors.primary.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary)),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: onRemove,
+            child: const Icon(Icons.close_rounded,
+                size: 14, color: AppColors.primary),
+          ),
+        ],
+      ),
     );
   }
 
@@ -426,152 +558,192 @@ class _OffresScreenState extends State<OffresScreen> {
       backgroundColor: AppColors.surface,
       appBar: AppBar(
         title: const Text('Offres'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(160),
-          child: Container(
-            color: AppColors.primary,
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Column(
-              children: [
-                // Barre de recherche
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+        actions: [
+          Stack(
+            children: [
+              IconButton(
+                onPressed: _toggleFilters,
+                icon: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Icon(
+                    _showFilters
+                        ? Icons.filter_list_off_rounded
+                        : Icons.filter_list_rounded,
+                    key: ValueKey(_showFilters),
+                    color: _hasActiveFilters
+                        ? AppColors.accent
+                        : Colors.white,
+                  ),
+                ),
+              ),
+              if (_hasActiveFilters)
+                Positioned(
+                  top: 8,
+                  right: 8,
                   child: Container(
-                    height: 46,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (_) => setState(() {}),
-                      style: const TextStyle(
-                        color: AppColors.textDark,
-                        fontSize: 14,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Rechercher un poste, entreprise...',
-                        hintStyle: const TextStyle(
-                          color: AppColors.textGrey,
-                          fontSize: 14,
-                        ),
-                        prefixIcon: const Icon(
-                          Icons.search_rounded,
-                          color: AppColors.textGrey,
-                          size: 20,
-                        ),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                          icon: const Icon(Icons.close_rounded,
-                              size: 18, color: AppColors.textGrey),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {});
-                          },
-                        )
-                            : Container(
-                          margin: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: AppColors.accent,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.tune_rounded,
-                            color: AppColors.primary,
-                            size: 18,
-                          ),
-                        ),
-                        filled: false,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        contentPadding:
-                        const EdgeInsets.symmetric(vertical: 13),
-                      ),
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.orange,
+                      shape: BoxShape.circle,
                     ),
                   ),
                 ),
-
-                // Filtre secteur dans l'AppBar
-                _buildFilterRow(
-                  'Secteur',
-                  _secteurs,
-                  _selectedSecteur,
-                      (val) => setState(() => _selectedSecteur = val),
+            ],
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(60),
+          child: Container(
+            color: AppColors.primary,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Container(
+              height: 46,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (_) => setState(() {}),
+                style: const TextStyle(
+                    color: AppColors.textDark, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: 'Rechercher un poste, entreprise...',
+                  hintStyle: const TextStyle(
+                      color: AppColors.textGrey, fontSize: 14),
+                  prefixIcon: const Icon(Icons.search_rounded,
+                      color: AppColors.textGrey, size: 20),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                    icon: const Icon(Icons.close_rounded,
+                        size: 18, color: AppColors.textGrey),
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() {});
+                    },
+                  )
+                      : null,
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding:
+                  const EdgeInsets.symmetric(vertical: 13),
                 ),
-              ],
+              ),
             ),
           ),
         ),
       ),
-
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 12),
-
-          _buildFilterRow(
-            'Niveau',
-            _niveaux,
-            _selectedNiveau,
-                (val) => setState(() => _selectedNiveau = val),
-          ),
-
-          const SizedBox(height: 8),
-
-          _buildFilterRow(
-            'Ville',
-            _villes,
-            _selectedVille,
-                (val) => setState(() => _selectedVille = val),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Compteur résultats
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              '${_offresFiltrees.length} offre(s) trouvée(s)',
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textGrey,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
-          // Liste des offres
-          Expanded(
-            child: _offresFiltrees.isEmpty
-                ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+      body: RefreshIndicator(
+        onRefresh: _loadOffres,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 12),
+            _buildFilterPanel(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
                 children: [
-                  Icon(Icons.search_off,
-                      size: 64, color: AppColors.textGrey),
-                  SizedBox(height: 16),
                   Text(
-                    'Aucune offre trouvée',
-                    style: TextStyle(color: AppColors.textGrey),
+                    '${_offresFiltrees.length} offre(s) trouvée(s)',
+                    style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textGrey,
+                        fontWeight: FontWeight.w500),
                   ),
+                  if (_hasActiveFilters) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Text(
+                        'Filtré',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary),
+                      ),
+                    ),
+                  ],
                 ],
               ),
-            )
-                : ListView.builder(
-              itemCount: _offresFiltrees.length,
-              itemBuilder: (context, index) {
-                final offre = _offresFiltrees[index];
-                return OffreCard(
-                  offre: offre,
-                  onTap: () => _showOffreDetail(context, offre),
-                );
-              },
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Expanded(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline,
+                        size: 64, color: Colors.red),
+                    const SizedBox(height: 16),
+                    Text('Erreur: $_error',
+                        style: const TextStyle(
+                            color: Colors.red)),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _loadOffres,
+                      child: const Text('Réessayer'),
+                    ),
+                  ],
+                ),
+              )
+                  : _offresFiltrees.isEmpty
+                  ? Center(
+                child: Column(
+                  mainAxisAlignment:
+                  MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      _hasActiveFilters
+                          ? Icons.filter_list_off_rounded
+                          : Icons.search_off,
+                      size: 64,
+                      color: AppColors.textGrey,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _hasActiveFilters
+                          ? 'Aucune offre pour ces filtres'
+                          : 'Aucune offre disponible',
+                      style: const TextStyle(
+                          color: AppColors.textGrey),
+                    ),
+                    if (_hasActiveFilters) ...[
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: _resetFilters,
+                        child: const Text(
+                            'Réinitialiser les filtres'),
+                      ),
+                    ],
+                  ],
+                ),
+              )
+                  : ListView.builder(
+                itemCount: _offresFiltrees.length,
+                itemBuilder: (context, index) {
+                  final offre = _offresFiltrees[index];
+                  return OffreCard(
+                    offre: offre,
+                    onTap: () =>
+                        _showOffreDetail(context, offre),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

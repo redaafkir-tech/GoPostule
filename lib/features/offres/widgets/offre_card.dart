@@ -1,11 +1,11 @@
+// lib/features/offres/widgets/offre_card.dart
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../shared/offre.dart';
+import '../../../shared/offre.dart';  // ← Modèle typed
 
-// Widget réutilisable — affiche une offre sous forme de card
 class OffreCard extends StatelessWidget {
   final Offre offre;
-  final VoidCallback onTap; // Action quand on clique sur la card
+  final VoidCallback onTap;
 
   const OffreCard({
     super.key,
@@ -16,22 +16,25 @@ class OffreCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
       child: InkWell(
-        // InkWell ajoute l'effet ripple au clic
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── LIGNE 1 : Titre + Badge Secteur ──
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Titre de l'offre
                   Expanded(
                     child: Text(
-                      offre.titre,
+                      offre.titre,  // ✅ Champ correct
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
@@ -41,8 +44,6 @@ class OffreCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-
-                  // Badge secteur — jaune
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
@@ -53,7 +54,7 @@ class OffreCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      offre.secteur,
+                      offre.secteur,  // ✅ Champ correct
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
@@ -66,9 +67,9 @@ class OffreCard extends StatelessWidget {
 
               const SizedBox(height: 8),
 
-              // Entreprise
+              // ── LIGNE 2 : Entreprise ──
               Text(
-                offre.entreprise,
+                offre.entreprise,  // ✅ Champ correct
                 style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.textGrey,
@@ -77,7 +78,7 @@ class OffreCard extends StatelessWidget {
 
               const SizedBox(height: 8),
 
-              // Ville + Niveau
+              // ── LIGNE 3 : Localisation + TypeContrat (au lieu de Ville+Niveau) ──
               Row(
                 children: [
                   const Icon(
@@ -87,7 +88,7 @@ class OffreCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    offre.ville,
+                    offre.localisation,  // ✅ Champ correct (au lieu de ville)
                     style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.textGrey,
@@ -95,13 +96,13 @@ class OffreCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 16),
                   const Icon(
-                    Icons.school_outlined,
+                    Icons.work_outline,  // ✅ Icône plus adaptée
                     size: 14,
                     color: AppColors.textGrey,
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    offre.niveau,
+                    offre.typeContrat,  // ✅ Champ correct (au lieu de niveau)
                     style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.textGrey,
@@ -112,18 +113,26 @@ class OffreCard extends StatelessWidget {
 
               const SizedBox(height: 12),
 
-              // Date publication
-              Text(
-                'Publié le ${offre.datePublication.day}/${offre.datePublication.month}/${offre.datePublication.year}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textGrey,
+              // ── LIGNE 4 : Date de publication (avec null safety) ──
+              if (offre.createdAt != null)  // ✅ Vérification null
+                Text(
+                  'Publié le ${_formatDate(offre.createdAt!)}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textGrey,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  // ✅ Helper pour formater la date proprement
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}/'
+        '${date.month.toString().padLeft(2, '0')}/'
+        '${date.year}';
   }
 }

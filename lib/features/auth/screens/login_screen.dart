@@ -33,39 +33,48 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // Fonction appelée quand l'utilisateur appuie sur "Se connecter"
+  // Dans login_screen.dart - méthode _handleLogin ou équivalente
+
   Future<void> _handleLogin() async {
-    // Vérifie que tous les champs sont valides
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
-      // ── APPEL API LOGIN ──────────────────────────────
-      final result = await AuthService.login(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
+      // ✅ APPEL CORRECT avec paramètres NOMMÉS
+      await AuthService.login(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
       );
 
-//  Majuscules comme le backend
-      await StorageService.saveToken(result['Token']);
-
-      // Naviguer vers l'accueil
       if (mounted) {
+        // Message de succès
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Connexion réussie ✅'),
+            backgroundColor: AppColors.statusOffer,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        );
+
+        // Navigation vers home
         Navigator.pushReplacementNamed(context, '/home');
       }
-
     } catch (e) {
-      // Afficher l'erreur
       if (mounted) {
+        // Message d'erreur
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.statusRejected,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

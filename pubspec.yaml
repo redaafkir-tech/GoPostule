@@ -30,6 +30,10 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # ... tes autres dépendances
+  file_picker: ^8.0.0
+  url_launcher: ^6.3.2
+  intl: ^0.20.2
 
 
   # Appels HTTP vers ton API .NET
@@ -48,6 +52,15 @@ dependencies:
 
   # Images depuis l'API
   cached_network_image: ^3.3.1
+
+
+
+  intl_phone_field: ^3.2.0
+
+
+  image_picker: ^1.0.7
+
+
 
   # Modèles JSON automatiques
   json_annotation: ^4.8.1

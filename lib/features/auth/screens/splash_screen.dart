@@ -1,3 +1,4 @@
+// lib/features/auth/screens/splash_screen.dart
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/storage_service.dart';
@@ -63,10 +64,10 @@ class _SplashScreenState extends State<SplashScreen>
     // Lance l'animation dès que l'écran s'ouvre
     _controller.forward();
 
-    // Après 3 secondes → naviguer vers Login
+    // Après 3 secondes → naviguer vers Login ou Home
     Future.delayed(const Duration(seconds: 3), () async {
       if (mounted) {
-        // Vérifier si token existe
+        // ✅ Vérifier si token existe (méthode isLoggedIn ajoutée)
         final loggedIn = await StorageService.isLoggedIn();
 
         if (mounted) {
@@ -117,6 +118,22 @@ class _SplashScreenState extends State<SplashScreen>
               Image.asset(
                 'assets/images/logo.png',
                 width: 200,
+                errorBuilder: (context, error, stackTrace) {
+                  // Fallback si l'image n'existe pas
+                  return Container(
+                    width: 200,
+                    height: 200,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.work_outline,
+                      size: 100,
+                      color: AppColors.primary,
+                    ),
+                  );
+                },
               ),
 
               const SizedBox(height: 40),
