@@ -1,8 +1,11 @@
 // lib/features/candidatures/widgets/application_actions.dart
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../shared/candidature_enhanced.dart';
+import 'document_center.dart';
+import 'submit_reclamation_dialog.dart';
+import 'share_offer_dialog.dart';
 
 class ApplicationActions extends StatelessWidget {
   final CandidatureEnhanced candidature;
@@ -63,40 +66,21 @@ class ApplicationActions extends StatelessWidget {
             icon: Icons.edit_document,
             label: 'Modifier documents',
             color: const Color(0xFF3B82F6),
-            onTap: () {
-              // Navigate to document center
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Fonctionnalité à venir'),
-                  backgroundColor: AppColors.primary,
-                ),
-              );
-            },
+            onTap: () => _modifyDocuments(context),
           ),
           const SizedBox(height: 12),
           _buildActionButton(
             icon: Icons.download_rounded,
             label: 'Télécharger CV',
             color: const Color(0xFF10B981),
-            onTap: () {
-              // Download CV
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Téléchargement du CV...'),
-                  backgroundColor: AppColors.primary,
-                ),
-              );
-            },
+            onTap: () => _downloadCV(context),
           ),
           const SizedBox(height: 12),
           _buildActionButton(
             icon: Icons.visibility_rounded,
             label: 'Voir l\'offre',
             color: const Color(0xFF8B5CF6),
-            onTap: () {
-              // View offer details
-              Navigator.pushNamed(context, '/offres');
-            },
+            onTap: () => _viewOffer(context),
           ),
           const SizedBox(height: 12),
           _buildActionButton(
@@ -113,32 +97,104 @@ class ApplicationActions extends StatelessWidget {
           _buildSecondaryActionButton(
             icon: Icons.report_problem_rounded,
             label: 'Soumettre une réclamation',
-            onTap: () {
-              // Navigate to reclamation
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Fonctionnalité à venir'),
-                  backgroundColor: AppColors.primary,
-                ),
-              );
-            },
+            onTap: () => _submitReclamation(context),
           ),
           const SizedBox(height: 12),
           _buildSecondaryActionButton(
             icon: Icons.share_rounded,
             label: 'Partager cette offre',
-            onTap: () {
-              // Share offer
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Partage de l\'offre'),
-                  backgroundColor: AppColors.primary,
-                ),
-              );
-            },
+            onTap: () => _shareOffer(context),
           ),
         ],
       ),
+    );
+  }
+
+  // ✅ ACTIONS RÉELLES
+  void _modifyDocuments(BuildContext context) {
+    // Ouvrir le centre de documents en bottom sheet
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.8,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (_, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: SingleChildScrollView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(16),
+            child: DocumentCenter(candidature: candidature),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _downloadCV(BuildContext context) {
+    // Simulation de téléchargement - À remplacer par un vrai appel API
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('📄 Préparation du téléchargement...'),
+        backgroundColor: AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+
+    // TODO: Implémenter le vrai téléchargement depuis le backend
+    // Exemple: await downloadFile(candidature.documentStatus.cvUrl);
+  }
+
+  void _viewOffer(BuildContext context) {
+    // Naviguer vers les détails de l'offre
+    Navigator.pushNamed(
+      context,
+      '/offres/detail',
+      arguments: candidature.offre.id,
+    );
+  }
+
+  Future<void> _contactRecruiter(BuildContext context) async {
+    final Uri emailUri = Uri(
+      scheme: 'mailto',
+      path: 'rh@entreprise.com',
+      query: 'subject=Candidature: ${candidature.offre.titre}',
+    );
+
+    if (await canLaunchUrl(emailUri)) {
+      await launchUrl(emailUri);
+    } else {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Impossible d\'ouvrir le client email'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _submitReclamation(BuildContext context) {
+    // Ouvrir le dialog de réclamation
+    showDialog(
+      context: context,
+      builder: (_) => SubmitReclamationDialog(
+        candidatureId: int.tryParse(candidature.id) ?? 0,
+      ),
+    );
+  }
+
+  void _shareOffer(BuildContext context) {
+    // Ouvrir le dialog de partage
+    showDialog(
+      context: context,
+      builder: (_) => ShareOfferDialog(offre: candidature.offre),
     );
   }
 
@@ -225,26 +281,5 @@ class ApplicationActions extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _contactRecruiter(BuildContext context) async {
-    final Uri emailUri = Uri(
-      scheme: 'mailto',
-      path: 'rh@entreprise.com',
-      query: 'subject=Candidature: ${candidature.offre.titre}',
-    );
-
-    if (await canLaunchUrl(emailUri)) {
-      await launchUrl(emailUri);
-    } else {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Impossible d\'ouvrir le client email'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
   }
 }

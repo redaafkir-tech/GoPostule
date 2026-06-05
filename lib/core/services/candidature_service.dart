@@ -1,3 +1,4 @@
+// lib/core/services/candidature_service.dart
 import 'package:dio/dio.dart';
 import '../network/dio_client.dart';
 import '../constants/api_constants.dart';
@@ -10,17 +11,49 @@ class CandidatureService {
     required int offreId,
     String? lettreMotivation,
   }) async {
-    final response = await _dio.post(ApiConstants.candidatures, data: {
-      'OffreId': offreId,
-      'LettreMotivation': lettreMotivation ?? '',
-    });
-    return response.data as Map<String, dynamic>;
+    print('📡 CandidatureService.postuler appelé');
+    print('   OffreId: $offreId');
+    print('   Lettre: ${lettreMotivation?.length ?? 0} caractères');
+
+    try {
+      final response = await _dio.post(ApiConstants.candidatures, data: {
+        'OffreId': offreId,
+        'LettreMotivation': lettreMotivation ?? '',
+      });
+
+      print('✅ Réponse API: ${response.statusCode}');
+      print('   Données: ${response.data}');
+
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      print('❌ Erreur Dio postuler:');
+      print('   Status: ${e.response?.statusCode}');
+      print('   Message: ${e.message}');
+      print('   Response: ${e.response?.data}');  // ← AJOUTÉ POUR DEBUG
+      rethrow;
+    }
   }
 
   // GET /api/Candidatures/me — mes candidatures
   Future<List<dynamic>> getMesCandidatures() async {
-    final response = await _dio.get(ApiConstants.mesCandidatures);
-    return response.data;
+    try {
+      print('🔄 Appel API: GET /api/Candidatures/me');
+
+      final response = await _dio.get(ApiConstants.mesCandidatures);
+
+      print('✅ Status: ${response.statusCode}');
+      print('   Données: ${response.data}');
+      print('   Nombre de candidatures: ${(response.data as List).length}');
+
+      return response.data;
+    } on DioException catch (e) {
+      print('❌ Erreur API getMesCandidatures:');
+      print('   Type: ${e.type}');
+      print('   Status: ${e.response?.statusCode}');
+      print('   Message: ${e.message}');
+      print('   Response: ${e.response?.data}');
+      rethrow;
+    }
   }
 
   // GET /api/Candidatures/{id}
@@ -36,13 +69,12 @@ class CandidatureService {
   }
 
   // PATCH /api/Candidatures/{id}/phase (admin/RH)
-  // Phases valides : soumise | examen_dossier | validee | rejetee | admise
   Future<Map<String, dynamic>> changerPhase({
     required int id,
     required String phase,
     String? commentaire,
   }) async {
-    final response = await _dio.patch(
+    final response = await _dio.dio.patch(
       '${ApiConstants.candidatures}/$id/phase',
       data: {
         'Phase': phase,

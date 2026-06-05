@@ -1,76 +1,102 @@
 // lib/core/services/storage_service.dart
-import 'dart:convert'; // ✅ Pour jsonEncode/jsonDecode
 import 'package:shared_preferences/shared_preferences.dart';
 
+
 class StorageService {
-  static const String _tokenKey = 'auth_token';
-  static const String _userKey = 'user_data';
+  static SharedPreferences? _prefs;
 
-  // ─────────────────────────────────────────────────────────────
-  // 🚀 INITIALISATION
-  // ─────────────────────────────────────────────────────────────
+  /// 🔹 Initialisation obligatoire dans main()
   static Future<void> init() async {
-    await SharedPreferences.getInstance();
+    _prefs = await SharedPreferences.getInstance();
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 🔐 GESTION DU TOKEN JWT
-  // ─────────────────────────────────────────────────────────────
-
-  // Sauvegarder le token
+  /// 🔹 TOKEN JWT
   static Future<void> saveToken(String token) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_tokenKey, token);
+    await _prefs?.setString('token', token);
   }
 
-  // Récupérer le token
-  static Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_tokenKey);
+  static String? getToken() {
+    return _prefs?.getString('token');
   }
 
-  // Supprimer le token (déconnexion)
   static Future<void> removeToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_tokenKey);
+    await _prefs?.remove('token');
   }
 
-  // ✅ Vérifier si l'utilisateur est connecté
-  static Future<bool> isLoggedIn() async {
-    final token = await getToken();
+  static bool hasToken() {
+    final token = getToken();
     return token != null && token.isNotEmpty;
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 👤 GESTION DES DONNÉES UTILISATEUR
-  // ─────────────────────────────────────────────────────────────
-
-  // Sauvegarder les données utilisateur
-  static Future<void> saveUserData(Map<String, dynamic> userData) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_userKey, jsonEncode(userData));
+  /// 🔹 USER ID
+  static Future<void> saveUserId(int userId) async {
+    await _prefs?.setInt('userId', userId);
   }
 
-  // Récupérer les données utilisateur
-  static Future<Map<String, dynamic>?> getUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getString(_userKey);
-    if (data == null) return null;
-    return jsonDecode(data);
+  static int? getUserId() {
+    return _prefs?.getInt('userId');
   }
 
-  // Supprimer les données utilisateur
-  static Future<void> removeUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_userKey);
+  static Future<void> removeUserId() async {
+    await _prefs?.remove('userId');
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 🚪 DÉCONNEXION COMPLÈTE
-  // ─────────────────────────────────────────────────────────────
+  /// 🔹 EMAIL (pour pré-remplir le login)
+  static Future<void> saveEmail(String email) async {
+    await _prefs?.setString('email', email);
+  }
 
+  static String? getEmail() {
+    return _prefs?.getString('email');
+  }
+
+  static Future<void> removeEmail() async {
+    await _prefs?.remove('email');
+  }
+
+  /// 🔹 ROLE UTILISATEUR
+  static Future<void> saveRole(String role) async {
+    await _prefs?.setString('role', role);
+  }
+
+  static String? getRole() {
+    return _prefs?.getString('role');
+  }
+
+  static Future<void> removeRole() async {
+    await _prefs?.remove('role');
+  }
+
+  /// 🔹 LOGOUT COMPLET
   static Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.clear(); // Supprime token + userData
+    await removeToken();
+    await removeUserId();
+    await removeEmail();
+    await removeRole();
+    // Optionnel : clear() si vous voulez tout effacer
+    // await _prefs?.clear();
+  }
+
+  /// 🔹 VÉRIFICATION SESSION
+  static Future<bool> isAuthenticated() async {
+    final token = getToken();
+    return token != null && token.isNotEmpty;
+  }
+  /// 🔹 RESET COMPLET (utile pour tests ou réinstallation)
+  static Future<void> clearAll() async {
+    await _prefs?.clear();
+  }
+
+  /// 🔹 DEBUG : Affiche toutes les clés stockées (dev uniquement)
+  static void debugPrintAll() {
+    assert(() {
+      // ignore: avoid_print
+      print('🔍 StorageService debug:');
+      _prefs?.getKeys().forEach((key) {
+        // ignore: avoid_print
+        print('   • $key = ${_prefs?.get(key)}');
+      });
+      return true;
+    }());
   }
 }

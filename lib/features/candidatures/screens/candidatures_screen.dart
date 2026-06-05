@@ -1,8 +1,9 @@
+// lib/features/candidatures/screens/candidatures_screen.dart
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:dio/dio.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/services/candidature_service.dart';
 import '../../../core/services/reclamation_service.dart';
-import 'package:dio/dio.dart';
 
 class CandidaturesScreen extends StatefulWidget {
   const CandidaturesScreen({super.key});
@@ -21,25 +22,50 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
   bool _isLoading = true;
   String? _error;
 
+  // ✅ Pour hover effect
+  int? _hoveredCardIndex;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadCandidatures();
+
+    // Rafraîchir automatiquement quand l'écran devient visible
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCandidatures();
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCandidatures() async {
+    print('🔄 Chargement des candidatures...');
+
     setState(() {
       _isLoading = true;
       _error = null;
     });
+
     try {
       final candidatures = await _candidatureService.getMesCandidatures();
+
+      print('✅ Candidatures reçues: ${candidatures.length}');
+      print('   Données: $candidatures');
+
+      if (!mounted) return;
+
       setState(() {
         _candidatures = candidatures;
         _isLoading = false;
       });
     } catch (e) {
+      print('❌ Erreur chargement: $e');
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -47,19 +73,42 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
     }
   }
 
+  // ✅ Filtrer seulement les candidatures réelles
+  List<dynamic> get _actives => _candidatures
+      .where((c) {
+    final phase = c['PhaseActuelle']?.toString().toLowerCase() ?? '';
+    return phase != 'admise' && phase != 'rejetee';
+  })
+      .toList();
+
+  List<dynamic> get _terminees => _candidatures
+      .where((c) {
+    final phase = c['PhaseActuelle']?.toString().toLowerCase() ?? '';
+    return phase == 'admise' || phase == 'rejetee';
+  })
+      .toList();
+
   Future<void> _deleteCandidature(int id) async {
     try {
       await _candidatureService.deleteCandidature(id);
       _loadCandidatures();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Candidature supprimée')),
+          const SnackBar(
+            content: Text('Candidature supprimée'),
+            backgroundColor: AppColors.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e')),
+          SnackBar(
+            content: Text('Erreur: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
         );
       }
     }
@@ -75,13 +124,10 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Réclamation soumise avec succès'),
-            backgroundColor: AppColors.primary,
+          const SnackBar(
+            content: Text('✅ Réclamation soumise avec succès'),
+            backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
           ),
         );
       }
@@ -105,7 +151,6 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
     }
   }
 
-  // Supprimer une candidature
   void _supprimerCandidature(int id) {
     showDialog(
       context: context,
@@ -122,7 +167,8 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.statusRejected,
+              backgroundColor: AppColors.danger,
+              foregroundColor: Colors.white,
             ),
             onPressed: () {
               Navigator.pop(ctx);
@@ -135,7 +181,6 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
     );
   }
 
-  // Bottom sheet détail candidature
   void _showDetail(BuildContext context, dynamic c) {
     showModalBottomSheet(
       context: context,
@@ -157,7 +202,7 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE0E0E0),
+                  color: Colors.grey.shade300,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -166,22 +211,28 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
                   controller: scrollController,
                   padding: const EdgeInsets.all(24),
                   children: [
+                    // Header
                     Row(
                       children: [
                         Container(
                           width: 52,
                           height: 52,
                           decoration: BoxDecoration(
-                            color: AppColors.primary.withOpacity(0.08),
+                            gradient: const LinearGradient(
+                              colors: [AppColors.primary, AppColors.secondary],
+                            ),
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Center(
                             child: Text(
-                              (c['Offre']?['Entreprise'] ?? '??').substring(0, 2).toUpperCase(),
+                              (c['Offre']?['Entreprise'] ?? '??')
+                                  .toString()
+                                  .substring(0, 2)
+                                  .toUpperCase(),
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: AppColors.primary,
+                                color: Colors.white,
                               ),
                             ),
                           ),
@@ -212,17 +263,21 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
                       ],
                     ),
                     const SizedBox(height: 24),
-                    const Divider(height: 1, color: Color(0xFFF0F0F0)),
+                    const Divider(height: 1),
                     const SizedBox(height: 20),
 
-                    // Phase actuelle
-                    _buildPhaseBloc(c),
+                    // ✅ TIMELINE DYNAMIQUE DES ÉTAPES
+                    _buildRecruitmentTimeline(c),
 
-                    // Historique des phases
-                    if (c['Historique'] != null && (c['Historique'] as List).isNotEmpty) ...[
-                      const SizedBox(height: 20),
+                    const SizedBox(height: 24),
+                    const Divider(height: 1),
+                    const SizedBox(height: 20),
+
+                    // Historique
+                    if (c['Historique'] != null &&
+                        (c['Historique'] as List).isNotEmpty) ...[
                       const Text(
-                        'Historique',
+                        'Historique des actions',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -280,348 +335,83 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
     );
   }
 
-  Widget _buildPhaseBloc(dynamic c) {
-    final phase = c['PhaseActuelle'] ?? 'soumise';
+  // ✅ TIMELINE DYNAMIQUE DES ÉTAPES DE RECRUTEMENT
+  Widget _buildRecruitmentTimeline(dynamic c) {
+    final phase = c['PhaseActuelle']?.toString().toLowerCase() ?? 'soumise';
+    final historique = c['Historique'] as List? ?? [];
 
-    switch (phase) {
-      case 'admise':
-        return _buildAdmisBloc();
-      case 'rejetee':
-        return _buildRefuseBloc(context, c);
-      case 'validee':
-        return _buildValideBloc();
-      case 'examen_dossier':
-        return _buildExamenBloc(c);
-      default:
-        return _buildEnAttenteBloc(c);
-    }
-  }
-
-  Widget _buildEnAttenteBloc(dynamic c) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Statut actuel',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark)),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: AppColors.primary.withOpacity(0.15)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.hourglass_top_rounded,
-                  color: AppColors.primary.withOpacity(0.7), size: 20),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Votre candidature a bien été envoyée. Elle est en attente d\'examen.',
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textGrey,
-                      height: 1.5),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildExamenBloc(dynamic c) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Examen du dossier',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark)),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.accent.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.accent.withOpacity(0.4)),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.folder_open_rounded,
-                  color: AppColors.primary, size: 20),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Votre dossier est en cours d\'examen par l\'équipe RH.',
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textGrey,
-                      height: 1.5),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildValideBloc() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Candidature validée',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark)),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.statusOffer.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: AppColors.statusOffer.withOpacity(0.3)),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.check_circle_outline,
-                  color: AppColors.statusOffer, size: 20),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Votre candidature a été validée. Vous serez contacté prochainement.',
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textGrey,
-                      height: 1.5),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAdmisBloc() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Résultat',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark)),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.statusOffer.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: AppColors.statusOffer.withOpacity(0.3)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppColors.statusOffer.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.check_circle_outline,
-                    color: AppColors.statusOffer, size: 22),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Félicitations !',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.statusOffer,
-                        )),
-                    SizedBox(height: 4),
-                    Text(
-                      'Votre candidature a été retenue. Vous serez contacté prochainement.',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textGrey,
-                          height: 1.5),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRefuseBloc(BuildContext context, dynamic c) {
-    final _objetController = TextEditingController();
-    final _messageController = TextEditingController();
+    // Déterminer le statut de chaque étape
+    final etapes = [
+      {'key': 'traitement_dossier', 'label': 'Traitement du dossier', 'icon': Icons.folder_open},
+      {'key': 'concours_ecrit', 'label': 'Concours écrit', 'icon': Icons.edit_note},
+      {'key': 'concours_oral', 'label': 'Concours oral', 'icon': Icons.mic},
+      {'key': 'admission', 'label': 'Décision finale', 'icon': Icons.verified},
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Résultat',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark)),
-        const SizedBox(height: 12),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: AppColors.statusRejected.withOpacity(0.06),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-                color: AppColors.statusRejected.withOpacity(0.25)),
-          ),
-          child: const Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.cancel_outlined,
-                  color: AppColors.statusRejected, size: 22),
-              SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Candidature refusée',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.statusRejected,
-                        )),
-                    SizedBox(height: 6),
-                    Text(
-                      'Votre candidature n\'a pas été retenue pour ce poste.',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textGrey,
-                          height: 1.5),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 20),
-        const Text('Déposer une réclamation',
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark)),
-        const SizedBox(height: 8),
         const Text(
-          'Si vous estimez que cette décision est injustifiée, vous pouvez soumettre une réclamation.',
+          'Suivi du processus',
           style: TextStyle(
-              fontSize: 12, color: AppColors.textGrey, height: 1.5),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _objetController,
-          decoration: InputDecoration(
-            hintText: 'Objet de la réclamation...',
-            hintStyle:
-            const TextStyle(fontSize: 13, color: AppColors.textGrey),
-            filled: true,
-            fillColor: AppColors.surface,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-              const BorderSide(color: AppColors.primary, width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _messageController,
-          maxLines: 4,
-          decoration: InputDecoration(
-            hintText: 'Expliquez votre réclamation...',
-            hintStyle:
-            const TextStyle(fontSize: 13, color: AppColors.textGrey),
-            filled: true,
-            fillColor: AppColors.surface,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide:
-              const BorderSide(color: AppColors.primary, width: 1.5),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () {
-              if (_objetController.text.trim().isEmpty ||
-                  _messageController.text.trim().isEmpty) return;
-              Navigator.pop(context);
-              _createReclamation(
-                c['Id'],
-                _objetController.text.trim(),
-                _messageController.text.trim(),
-              );
-            },
-            icon: const Icon(Icons.send_rounded, size: 16),
-            label: const Text('Soumettre la réclamation'),
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(0, 46),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textDark,
           ),
         ),
         const SizedBox(height: 16),
+        ...etapes.asMap().entries.map((entry) {
+          final index = entry.key;
+          final etape = entry.value;
+          final isLast = index == etapes.length - 1;
+
+          // Déterminer le statut de l'étape
+          final statut = _getEtapeStatut(etape['key'] as String, phase, historique);
+
+          return _TimelineStep(
+            number: index + 1,
+            title: etape['label'] as String,
+            icon: etape['icon'] as IconData,
+            status: statut,
+            isLast: isLast,
+          );
+        }).toList(),
       ],
     );
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+  // ✅ Détermine le statut d'une étape (validé/en cours/à venir/non validé)
+  EtapeStatus _getEtapeStatut(String etapeKey, String phase, List historique) {
+    // Map des étapes dans l'ordre
+    final ordreEtapes = ['traitement_dossier', 'concours_ecrit', 'concours_oral', 'admission'];
+    final currentIndex = ordreEtapes.indexOf(etapeKey);
+
+    // Déterminer la phase actuelle en index
+    int phaseIndex = -1;
+    if (phase == 'soumise' || phase == 'examen_dossier') phaseIndex = 0;
+    else if (phase == 'concours_ecrit_passe' || phase == 'attente_ecrit') phaseIndex = 1;
+    else if (phase == 'concours_oral_passe' || phase == 'attente_oral') phaseIndex = 2;
+    else if (phase == 'admise') phaseIndex = 3;
+    else if (phase == 'rejetee') {
+      // Trouver à quelle étape le rejet a eu lieu
+      final rejetEtape = historique.lastWhere(
+            (h) => h['Phase']?.toString().toLowerCase().contains('rejet') ?? false,
+        orElse: () => null,
+      );
+      if (rejetEtape != null) {
+        // Simplification: on considère que le rejet bloque les étapes suivantes
+        return EtapeStatus.failed;
+      }
+    }
+
+    if (currentIndex < phaseIndex) {
+      return EtapeStatus.completed; // Étape passée = validée
+    } else if (currentIndex == phaseIndex) {
+      return phase == 'admise' ? EtapeStatus.completed : EtapeStatus.active; // Étape en cours
+    } else {
+      return EtapeStatus.pending; // Étape à venir
+    }
   }
-
-  List<dynamic> get _actives => _candidatures
-      .where((c) => c['PhaseActuelle'] != 'admise' && c['PhaseActuelle'] != 'rejetee')
-      .toList();
-
-  List<dynamic> get _terminees => _candidatures
-      .where((c) => c['PhaseActuelle'] == 'admise' || c['PhaseActuelle'] == 'rejetee')
-      .toList();
 
   @override
   Widget build(BuildContext context) {
@@ -629,6 +419,9 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
       backgroundColor: AppColors.surface,
       appBar: AppBar(
         title: const Text('Mes Candidatures'),
+        backgroundColor: AppColors.primary,
+        elevation: 0,
+        centerTitle: true,
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Container(
@@ -640,7 +433,9 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
               labelColor: AppColors.accent,
               unselectedLabelColor: Colors.white60,
               labelStyle: const TextStyle(
-                  fontWeight: FontWeight.w600, fontSize: 14),
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
               tabs: [
                 Tab(text: 'En cours (${_actives.length})'),
                 Tab(text: 'Terminées (${_terminees.length})'),
@@ -650,27 +445,12 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: AppColors.accent))
           : _error != null
-          ? Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline,
-                size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text('Erreur: $_error',
-                style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadCandidatures,
-              child: const Text('Réessayer'),
-            ),
-          ],
-        ),
-      )
+          ? _buildErrorWidget()
           : RefreshIndicator(
         onRefresh: _loadCandidatures,
+        color: AppColors.accent,
         child: TabBarView(
           controller: _tabController,
           children: [
@@ -682,38 +462,109 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
     );
   }
 
+  Widget _buildErrorWidget() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 64,
+            color: AppColors.danger.withOpacity(0.7),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Erreur de chargement',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Text(
+              _error ?? 'Une erreur est survenue',
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.textGrey,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _loadCandidatures,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Réessayer'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 12,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildListe(List<dynamic> liste) {
     if (liste.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.assignment_outlined,
-                size: 64,
-                color: AppColors.textGrey.withOpacity(0.3)),
+            Icon(
+              Icons.assignment_outlined,
+              size: 80,
+              color: AppColors.textGrey.withOpacity(0.3),
+            ),
             const SizedBox(height: 16),
-            const Text('Aucune candidature',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textGrey)),
+            Text(
+              'Aucune candidature',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textDark,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Vos candidatures apparaîtront ici',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppColors.textGrey,
+              ),
+            ),
           ],
         ),
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
       itemCount: liste.length,
       itemBuilder: (context, index) {
         final c = liste[index];
-        final isTerminee = c['PhaseActuelle'] == 'admise' || c['PhaseActuelle'] == 'rejetee';
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: InkWell(
+        final isTerminee = c['PhaseActuelle'] == 'admise' ||
+            c['PhaseActuelle'] == 'rejetee';
+
+        // ✅ Hover effect pour web/desktop
+        return MouseRegion(
+          onEnter: (_) => setState(() => _hoveredCardIndex = index),
+          onExit: (_) => setState(() => _hoveredCardIndex = null),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.only(bottom: 12),
+            transform: Matrix4.identity()
+              ..scale(_hoveredCardIndex == index ? 1.02 : 1.0),
+            child: _CandidatureCard(
+              candidature: c,
+              isHovered: _hoveredCardIndex == index,
               onTap: () {
                 Navigator.pushNamed(
                   context,
@@ -721,121 +572,445 @@ class _CandidaturesScreenState extends State<CandidaturesScreen>
                   arguments: c['Id'].toString(),
                 );
               },
-            borderRadius: BorderRadius.circular(14),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Center(
-                          child: Text(
-                            (c['Offre']?['Entreprise'] ?? '??').substring(0, 2).toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              c['Offre']?['Titre'] ?? 'Offre inconnue',
-                              style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textDark,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              c['Offre']?['Entreprise'] ?? '',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textGrey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (isTerminee)
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              color: AppColors.statusRejected, size: 20),
-                          onPressed: () => _supprimerCandidature(c['Id']),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _getPhaseColor(c['PhaseActuelle']).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _getPhaseLabel(c['PhaseActuelle']),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: _getPhaseColor(c['PhaseActuelle']),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              onDelete: isTerminee ? () => _supprimerCandidature(c['Id']) : null,
+              onShowDetail: () => _showDetail(context, c),
             ),
           ),
         );
       },
     );
   }
+}
 
-  Color _getPhaseColor(String? phase) {
-    switch (phase) {
-      case 'admise':
-        return AppColors.statusOffer;
-      case 'rejetee':
-        return AppColors.statusRejected;
-      case 'validee':
-        return Colors.green;
-      case 'examen_dossier':
+// ══════════════════════════════════════════════════════════════
+// ENUM POUR LES STATUTS D'ÉTAPE
+// ══════════════════════════════════════════════════════════════
+enum EtapeStatus {
+  pending,    // À venir (gris)
+  active,     // En cours (orange/bleu)
+  completed,  // Validé (vert)
+  failed,     // Non validé (rouge)
+}
+
+// ══════════════════════════════════════════════════════════════
+// WIDGET TIMELINE STEP
+// ══════════════════════════════════════════════════════════════
+class _TimelineStep extends StatelessWidget {
+  final int number;
+  final String title;
+  final IconData icon;
+  final EtapeStatus status;
+  final bool isLast;
+
+  const _TimelineStep({
+    required this.number,
+    required this.title,
+    required this.icon,
+    required this.status,
+    required this.isLast,
+  });
+
+  Color _getStatusColor() {
+    switch (status) {
+      case EtapeStatus.completed:
+        return AppColors.success;
+      case EtapeStatus.active:
         return AppColors.accent;
-      default:
-        return AppColors.primary;
+      case EtapeStatus.failed:
+        return AppColors.danger;
+      case EtapeStatus.pending:
+        return Colors.grey.shade400;
     }
   }
 
+  IconData _getStatusIcon() {
+    switch (status) {
+      case EtapeStatus.completed:
+        return Icons.check;
+      case EtapeStatus.active:
+        return Icons.circle;
+      case EtapeStatus.failed:
+        return Icons.close;
+      case EtapeStatus.pending:
+        return Icons.circle_outlined;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _getStatusColor();
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Colonne du numéro/icone
+        Column(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: status == EtapeStatus.pending
+                    ? Colors.grey.shade200
+                    : color.withOpacity(0.15),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: status == EtapeStatus.pending
+                      ? Colors.grey.shade400
+                      : color,
+                  width: 2,
+                ),
+              ),
+              child: Icon(
+                _getStatusIcon(),
+                size: 18,
+                color: status == EtapeStatus.pending
+                    ? Colors.grey.shade500
+                    : color,
+              ),
+            ),
+            if (!isLast)
+              Container(
+                width: 2,
+                height: 40,
+                color: status == EtapeStatus.completed
+                    ? AppColors.success.withOpacity(0.3)
+                    : Colors.grey.shade300,
+              ),
+          ],
+        ),
+        const SizedBox(width: 12),
+        // Contenu de l'étape
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: status == EtapeStatus.pending
+                            ? AppColors.textGrey
+                            : AppColors.textDark,
+                      ),
+                    ),
+                    if (status == EtapeStatus.active) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text(
+                          'En cours',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (status == EtapeStatus.completed) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '✓ Validé',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.success,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ] else if (status == EtapeStatus.failed) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '✗ Non validé',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.danger,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// WIDGET CARTE CANDIDATURE AVEC HOVER
+// ══════════════════════════════════════════════════════════════
+class _CandidatureCard extends StatelessWidget {
+  final dynamic candidature;
+  final bool isHovered;
+  final VoidCallback onTap;
+  final VoidCallback? onDelete;
+  final VoidCallback onShowDetail;
+
+  const _CandidatureCard({
+    required this.candidature,
+    required this.isHovered,
+    required this.onTap,
+    this.onDelete,
+    required this.onShowDetail,
+  });
+
   String _getPhaseLabel(String? phase) {
-    switch (phase) {
+    switch (phase?.toString().toLowerCase()) {
       case 'soumise':
         return 'Soumise';
       case 'examen_dossier':
         return 'Examen du dossier';
       case 'validee':
         return 'Validée';
-      case 'rejetee':
-        return 'Rejetée';
       case 'admise':
         return 'Admise';
+      case 'rejetee':
+        return 'Rejetée';
       default:
         return phase ?? 'Inconnue';
     }
+  }
+
+  Color _getPhaseColor(String? phase) {
+    switch (phase?.toString().toLowerCase()) {
+      case 'soumise':
+        return AppColors.primary;
+      case 'examen_dossier':
+        return AppColors.accent;
+      case 'validee':
+      case 'admise':
+        return AppColors.success;
+      case 'rejetee':
+        return AppColors.danger;
+      default:
+        return AppColors.textGrey;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final offre = candidature['Offre'] ?? {};
+    final phase = candidature['PhaseActuelle']?.toString();
+    final dateCandidature = candidature['DateCandidature'] != null
+        ? DateTime.tryParse(candidature['DateCandidature'])
+        : DateTime.now();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isHovered ? Colors.white : AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isHovered
+                ? AppColors.primary.withOpacity(0.3)
+                : Colors.transparent,
+            width: isHovered ? 2 : 1,
+          ),
+          boxShadow: isHovered
+              ? [
+            BoxShadow(
+              color: AppColors.primary.withOpacity(0.15),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ]
+              : [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primary, AppColors.secondary],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(
+                    child: Text(
+                      (offre['Entreprise'] ?? '?')
+                          .toString()
+                          .substring(0, 2)
+                          .toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        offre['Titre'] ?? 'Offre inconnue',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: isHovered
+                              ? AppColors.primary
+                              : AppColors.textDark,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        offre['Entreprise'] ?? '',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textGrey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (onDelete != null)
+                  IconButton(
+                    icon: Icon(
+                      Icons.delete_outline,
+                      color: AppColors.danger,
+                      size: 20,
+                    ),
+                    onPressed: onDelete,
+                    tooltip: 'Supprimer',
+                  ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getPhaseColor(phase).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _getPhaseColor(phase).withOpacity(0.3),
+                    ),
+                  ),
+                  child: Text(
+                    _getPhaseLabel(phase),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: _getPhaseColor(phase),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  Icons.location_on_outlined,
+                  size: 14,
+                  color: AppColors.textGrey,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  offre['Localisation'] ?? '',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textGrey,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Icon(
+                  Icons.calendar_today_outlined,
+                  size: 14,
+                  color: AppColors.textGrey,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  dateCandidature != null
+                      ? '${dateCandidature.day.toString().padLeft(2, '0')}/${dateCandidature.month.toString().padLeft(2, '0')}/${dateCandidature.year}'
+                      : '',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textGrey,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // ✅ Mini timeline visuelle
+            _buildMiniTimeline(phase),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ Mini timeline dans la carte
+  Widget _buildMiniTimeline(String? phase) {
+    final etapes = ['soumise', 'examen_dossier', 'validee', 'admise'];
+    final currentPhase = phase?.toString().toLowerCase() ?? 'soumise';
+    final currentIndex = etapes.indexOf(currentPhase);
+
+    return Row(
+      children: [
+        for (int i = 0; i < etapes.length; i++) ...[
+          Container(
+            width: 20,
+            height: 4,
+            decoration: BoxDecoration(
+              color: i <= currentIndex
+                  ? (currentPhase == 'rejetee' && i < etapes.length - 1
+                  ? AppColors.success
+                  : currentPhase == 'rejetee'
+                  ? AppColors.danger
+                  : AppColors.accent)
+                  : Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          if (i < etapes.length - 1) const SizedBox(width: 4),
+        ],
+        const Spacer(),
+        GestureDetector(
+          onTap: onShowDetail,
+          child: Text(
+            'Voir détails →',
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.primary,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

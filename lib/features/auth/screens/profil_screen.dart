@@ -7,7 +7,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:convert';
 import '../../../core/services/auth_service.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../shared/user_model.dart';
 import '../../../core/services/storage_service.dart';
 
@@ -18,9 +17,10 @@ class ProfilScreen extends StatefulWidget {
   State<ProfilScreen> createState() => _ProfilScreenState();
 }
 
-class _ProfilScreenState extends State<ProfilScreen> with SingleTickerProviderStateMixin {
+class _ProfilScreenState extends State<ProfilScreen>
+    with SingleTickerProviderStateMixin {
   bool _isEditing = false;
-  bool _isLoading = false;
+  bool _isSaving = false;
   bool _pageLoading = true;
   bool _isUploadingPhoto = false;
   UserModel? _user;
@@ -29,1305 +29,1114 @@ class _ProfilScreenState extends State<ProfilScreen> with SingleTickerProviderSt
   Uint8List? _imageBytes;
   String? _photoUrl;
 
-  late TextEditingController _nomController;
-  late TextEditingController _prenomController;
-  late TextEditingController _emailController;
-  late TextEditingController _telephoneController;
+  late TextEditingController _nomCtrl;
+  late TextEditingController _prenomCtrl;
+  late TextEditingController _telCtrl;
   String? _selectedVille;
 
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-
-  final List<String> _villes = [
-    'Casablanca', 'Rabat', 'Marrakech', 'Fès', 'Tanger',
-    'Agadir', 'Meknès', 'Oujda', 'Kénitra', 'Tétouan',
-    'Safi', 'Salé', 'Beni Mellal', 'Nador', 'Khouribga',
-    'El Jadida', 'Settat', 'Taza', 'Essaouira', 'Khemisset',
-    'Guelmim', 'Laâyoune', 'Dakhla', 'Ouarzazate', 'Chefchaouen',
-    'Larache', 'Berkane', 'Mohammedia', 'Khénifra',
-  ];
+  late AnimationController _animCtrl;
+  late Animation<double> _fadeAnim;
 
   final ImagePicker _picker = ImagePicker();
 
-  String get _baseUrl {
-    if (kIsWeb) return 'http://localhost:5000';
-    return 'http://10.0.2.2:5000';
-  }
+  static const _gold  = Color(0xFFE8B74B);
+  static const _navy  = Color(0xFF1A3A5C);
+  static const _bg    = Color(0xFFF4F6FA);
+
+  final List<String> _villes = [
+    'Casablanca','Rabat','Marrakech','Fès','Tanger','Agadir','Meknès','Oujda',
+    'Kénitra','Tétouan','Safi','Salé','Beni Mellal','Nador','Khouribga',
+    'El Jadida','Settat','Taza','Essaouira','Khemisset','Guelmim','Laâyoune',
+    'Dakhla','Ouarzazate','Chefchaouen','Larache','Berkane','Mohammedia','Khénifra',
+  ];
+
+  String get _baseUrl => kIsWeb ? 'http://localhost:5000' : 'http://10.0.2.2:5000';
 
   int get _profileCompletion {
-    int completion = 0;
-    if (_user?.nom.isNotEmpty ?? false) completion += 15;
-    if (_user?.prenom.isNotEmpty ?? false) completion += 15;
-    if (_user?.email.isNotEmpty ?? false) completion += 15;
-    if (_user?.telephone.isNotEmpty ?? false) completion += 15;
-    if (_user?.ville.isNotEmpty ?? false) completion += 10;
-    if (_photoUrl != null || _imageFile != null || _imageBytes != null) completion += 20;
-    if ((_user?.nom.length ?? 0) > 2 && (_user?.prenom.length ?? 0) > 2) completion += 10;
-    return completion;
+    int s = 0;
+    if ((_user?.nom.length ?? 0) >= 2) s += 20;
+    if ((_user?.prenom.length ?? 0) >= 2) s += 20;
+    if (_user?.email.isNotEmpty ?? false) s += 20;
+    if ((_user?.telephone.length ?? 0) >= 8) s += 20;
+    if (_user?.ville.isNotEmpty ?? false) s += 10;
+    if (_photoUrl != null && _photoUrl!.isNotEmpty) s += 10;
+    return s.clamp(0, 100);
   }
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeInOut,
-    );
-    _animationController.forward();
-    _initControllers();
+    _nomCtrl    = TextEditingController();
+    _prenomCtrl = TextEditingController();
+    _telCtrl    = TextEditingController();
+    _animCtrl   = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _fadeAnim   = CurvedAnimation(parent: _animCtrl, curve: Curves.easeOut);
     _chargerProfil();
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
-    _nomController.dispose();
-    _prenomController.dispose();
-    _emailController.dispose();
-    _telephoneController.dispose();
+    _nomCtrl.dispose();
+    _prenomCtrl.dispose();
+    _telCtrl.dispose();
+    _animCtrl.dispose();
     super.dispose();
   }
 
-  void _initControllers() {
-    _nomController = TextEditingController();
-    _prenomController = TextEditingController();
-    _emailController = TextEditingController();
-    _telephoneController = TextEditingController();
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // 📸 UPLOAD PHOTO
-  // ─────────────────────────────────────────────────────────────
-  Future<void> _pickImage() async {
-    try {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 85,
-      );
-
-      if (pickedFile == null) return;
-      setState(() => _isUploadingPhoto = true);
-
-      String? uploadedPhotoUrl;
-
-      if (kIsWeb) {
-        final bytes = await pickedFile.readAsBytes();
-        setState(() => _imageBytes = bytes);
-        uploadedPhotoUrl = await _uploadPhotoBytesToServer(bytes, pickedFile.name);
-      } else {
-        final file = File(pickedFile.path);
-        setState(() => _imageFile = file);
-        uploadedPhotoUrl = await _uploadPhotoFileToServer(file);
-      }
-
-      if (uploadedPhotoUrl != null && _user != null) {
-        await AuthService.updateMe(
-          nom: _user!.nom,
-          prenom: _user!.prenom,
-          email: _user!.email,
-          telephone: _user!.telephone,
-          ville: _user!.ville,
-          photoUrl: uploadedPhotoUrl,
-        );
-
-        setState(() {
-          _photoUrl = uploadedPhotoUrl;
-          _user = _user!.copyWith(photoUrl: uploadedPhotoUrl);
-          _imageFile = null;
-          _imageBytes = null;
-        });
-
-        if (mounted) _showSuccess('Photo mise à jour ✅');
-      } else {
-        if (mounted) _showError('Upload échoué');
-      }
-
-      setState(() => _isUploadingPhoto = false);
-    } catch (e) {
-      setState(() => _isUploadingPhoto = false);
-      if (mounted) _showError('Erreur: ${e.toString()}');
-    }
-  }
-
-  Future<String?> _uploadPhotoFileToServer(File imageFile) async {
-    try {
-      final token = await StorageService.getToken();
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$_baseUrl/api/auth/upload-photo'),
-      );
-      request.headers['Authorization'] = 'Bearer $token';
-      request.files.add(await http.MultipartFile.fromPath('photo', imageFile.path));
-
-      var response = await request.send();
-      if (response.statusCode == 200) {
-        var data = await response.stream.bytesToString();
-        var json = jsonDecode(data);
-        return json['photoUrl'] as String?;
-      }
-      return null;
-    } catch (e) {
-      print('❌ Erreur upload mobile: $e');
-      return null;
-    }
-  }
-
-  Future<String?> _uploadPhotoBytesToServer(Uint8List bytes, String fileName) async {
-    try {
-      final token = await StorageService.getToken();
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$_baseUrl/api/auth/upload-photo'),
-      );
-      request.headers['Authorization'] = 'Bearer $token';
-      request.files.add(http.MultipartFile.fromBytes('photo', bytes, filename: fileName));
-
-      var response = await request.send();
-      if (response.statusCode == 200) {
-        var data = await response.stream.bytesToString();
-        var json = jsonDecode(data);
-        return json['photoUrl'] as String?;
-      }
-      return null;
-    } catch (e) {
-      print('❌ Erreur upload web: $e');
-      return null;
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // 📡 CHARGEMENT PROFIL
-  // ─────────────────────────────────────────────────────────────
+  // ── chargement ────────────────────────────────────────────────
   Future<void> _chargerProfil() async {
+    if (!mounted) return;
     setState(() => _pageLoading = true);
     try {
       final data = await AuthService.getMe();
-      print('📋 DATA PROFIL: $data');
-
+      if (!mounted) return;
+      final u = UserModel(
+        id: data['Id'] ?? data['id'] ?? 0,
+        nom: data['Nom'] ?? data['nom'] ?? '',
+        prenom: data['Prenom'] ?? data['prenom'] ?? '',
+        email: data['Email'] ?? data['email'] ?? '',
+        ville: data['Ville'] ?? data['ville'] ?? '',
+        telephone: data['Telephone'] ?? data['telephone'] ?? '',
+        photoUrl: data['PhotoUrl'] ?? data['photoUrl'],
+      );
       setState(() {
-        _user = UserModel(
-          id: data['Id'] ?? data['id'] ?? 0,
-          nom: data['Nom'] ?? data['nom'] ?? '',
-          prenom: data['Prenom'] ?? data['prenom'] ?? '',
-          email: data['Email'] ?? data['email'] ?? '',
-          ville: data['Ville'] ?? data['ville'] ?? '',
-          telephone: data['Telephone'] ?? data['telephone'] ?? '',
-          photoUrl: data['PhotoUrl'] ?? data['photoUrl'],
-        );
-
-        _photoUrl = _user!.photoUrl;
-        _nomController.text = _user!.nom;
-        _prenomController.text = _user!.prenom;
-        _emailController.text = _user!.email;
-        _telephoneController.text = _user!.telephone;
-        _selectedVille = _user!.ville.isNotEmpty ? _user!.ville : null;
+        _user = u;
+        _photoUrl = u.photoUrl;
+        _nomCtrl.text = u.nom;
+        _prenomCtrl.text = u.prenom;
+        _telCtrl.text = u.telephone;
+        _selectedVille = u.ville.isNotEmpty ? u.ville : null;
         _pageLoading = false;
       });
+      _animCtrl.forward();
     } catch (e) {
-      print('❌ Erreur chargement profil: $e');
+      if (!mounted) return;
       setState(() => _pageLoading = false);
-      if (mounted) _showError(e.toString());
+      _showError('Erreur de chargement');
     }
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // 💾 SAUVEGARDE PROFIL
-  // ─────────────────────────────────────────────────────────────
+  // ── upload photo ──────────────────────────────────────────────
+  Future<void> _pickImage() async {
+    final XFile? picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512, maxHeight: 512, imageQuality: 85,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _isUploadingPhoto = true);
+    try {
+      String? url;
+      if (kIsWeb) {
+        final bytes = await picked.readAsBytes();
+        url = await _uploadBytes(bytes, picked.name);
+      } else {
+        url = await _uploadFile(File(picked.path));
+      }
+      if (url != null && _user != null && mounted) {
+        await AuthService.updateMe(
+          nom: _user!.nom, prenom: _user!.prenom,
+          email: _user!.email, telephone: _user!.telephone,
+          ville: _user!.ville, photoUrl: url,
+        );
+        if (!mounted) return;
+        setState(() {
+          _photoUrl = url;
+          _user = _user!.copyWith(photoUrl: url);
+          _isUploadingPhoto = false;
+        });
+        _showSuccess('Photo mise à jour ✅');
+      } else {
+        if (mounted) setState(() => _isUploadingPhoto = false);
+        _showError('Échec de l\'upload');
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isUploadingPhoto = false);
+      _showError('Erreur lors de l\'upload');
+    }
+  }
+
+  Future<String?> _uploadFile(File file) async {
+    try {
+      final token = await StorageService.getToken();
+      final req = http.MultipartRequest('POST', Uri.parse('$_baseUrl/api/auth/upload-photo'));
+      req.headers['Authorization'] = 'Bearer $token';
+      req.files.add(await http.MultipartFile.fromPath('photo', file.path));
+      final res = await req.send();
+      if (res.statusCode == 200) {
+        final body = await res.stream.bytesToString();
+        return jsonDecode(body)['photoUrl'] as String?;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<String?> _uploadBytes(Uint8List bytes, String name) async {
+    try {
+      final token = await StorageService.getToken();
+      final req = http.MultipartRequest('POST', Uri.parse('$_baseUrl/api/auth/upload-photo'));
+      req.headers['Authorization'] = 'Bearer $token';
+      req.files.add(http.MultipartFile.fromBytes('photo', bytes, filename: name));
+      final res = await req.send();
+      if (res.statusCode == 200) {
+        final body = await res.stream.bytesToString();
+        return jsonDecode(body)['photoUrl'] as String?;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  // ── sauvegarde ────────────────────────────────────────────────
   Future<void> _sauvegarder() async {
     if (!_formValide()) return;
-    setState(() => _isLoading = true);
-
+    setState(() => _isSaving = true);
     try {
       await AuthService.updateMe(
-        nom: _nomController.text.trim(),
-        prenom: _prenomController.text.trim(),
-        email: _emailController.text.trim(),
-        telephone: _telephoneController.text.trim(),
+        nom: _nomCtrl.text.trim(),
+        prenom: _prenomCtrl.text.trim(),
+        email: _user!.email,
+        telephone: _telCtrl.text.trim(),
         ville: _selectedVille ?? '',
         photoUrl: _photoUrl,
       );
-
+      if (!mounted) return;
       setState(() {
         _user = _user!.copyWith(
-          nom: _nomController.text.trim(),
-          prenom: _prenomController.text.trim(),
-          email: _emailController.text.trim(),
+          nom: _nomCtrl.text.trim(),
+          prenom: _prenomCtrl.text.trim(),
           ville: _selectedVille ?? '',
-          telephone: _telephoneController.text.trim(),
+          telephone: _telCtrl.text.trim(),
         );
         _isEditing = false;
+        _isSaving = false;
       });
-
-      if (mounted) _showSuccess('Profil mis à jour ✅');
+      _showSuccess('Profil mis à jour ✅');
     } catch (e) {
-      if (mounted) _showError(e.toString().replaceAll('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      _showError(e.toString().replaceAll('Exception: ', ''));
     }
   }
 
-  bool _formValide() {
-    if (_nomController.text.trim().length < 2) {
-      _showError('Le nom doit contenir au moins 2 caractères');
-      return false;
-    }
-    if (_prenomController.text.trim().length < 2) {
-      _showError('Le prénom doit contenir au moins 2 caractères');
-      return false;
-    }
-    if (!RegExp(r'^[\w\.-]+@[\w\.-]+\.\w+$').hasMatch(_emailController.text.trim())) {
-      _showError('Email invalide');
-      return false;
-    }
-    return true;
-  }
-
-  void _annulerEdition() {
+  void _annuler() {
     setState(() {
       _isEditing = false;
-      _nomController.text = _user!.nom;
-      _prenomController.text = _user!.prenom;
-      _emailController.text = _user!.email;
-      _telephoneController.text = _user!.telephone;
-      _selectedVille = _user!.ville;
+      _nomCtrl.text = _user!.nom;
+      _prenomCtrl.text = _user!.prenom;
+      _telCtrl.text = _user!.telephone;
+      _selectedVille = _user!.ville.isNotEmpty ? _user!.ville : null;
     });
   }
 
-  void _confirmerDeconnexion() {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 30, spreadRadius: 5),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.logout_rounded, size: 40, color: Colors.red.shade600),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Déconnexion',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1A3A5C)),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Voulez-vous vraiment vous déconnecter ?',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: Colors.grey.shade300),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text('Annuler', style: TextStyle(color: Color(0xFF1A3A5C))),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        Navigator.pushReplacementNamed(context, '/login');
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red.shade600,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 0,
-                      ),
-                      child: const Text('Déconnexion', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+  bool _formValide() {
+    if (_nomCtrl.text.trim().length < 2) { _showError('Nom trop court'); return false; }
+    if (_prenomCtrl.text.trim().length < 2) { _showError('Prénom trop court'); return false; }
+    return true;
   }
 
-  void _showSuccess(String message) {
+  // ── snackbars ─────────────────────────────────────────────────
+  void _showSuccess(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Row(children: [
-        const Icon(Icons.check_circle, color: Colors.white),
-        const SizedBox(width: 12),
-        Text(message),
+        const Icon(Icons.check_circle_rounded, color: Colors.white),
+        const SizedBox(width: 10),
+        Expanded(child: Text(msg)),
       ]),
-      backgroundColor: AppColors.statusOffer,
+      backgroundColor: const Color(0xFF22C55E),
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      duration: const Duration(seconds: 3),
     ));
   }
 
-  void _showError(String message) {
+  void _showError(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Row(children: [
         const Icon(Icons.error_outline, color: Colors.white),
-        const SizedBox(width: 12),
-        Expanded(child: Text(message)),
+        const SizedBox(width: 10),
+        Expanded(child: Text(msg)),
       ]),
-      backgroundColor: AppColors.statusRejected,
+      backgroundColor: Colors.red.shade600,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      duration: const Duration(seconds: 4),
     ));
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_pageLoading) {
-      return Scaffold(
-        backgroundColor: AppColors.surface,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 50,
-                height: 50,
-                child: CircularProgressIndicator(
-                  color: const Color(0xFFE8B74B),
-                  strokeWidth: 3,
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Chargement...',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 14),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_user == null) {
-      return Scaffold(
-        backgroundColor: AppColors.surface,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error_outline, size: 80, color: Colors.grey.shade400),
-              const SizedBox(height: 16),
-              const Text('Impossible de charger le profil', style: TextStyle(fontSize: 16, color: Color(0xFF1A3A5C), fontWeight: FontWeight.w600)),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: _chargerProfil,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Réessayer'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1A3A5C),
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: AppColors.surface,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
-          ),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          if (!_isEditing)
-            IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.edit_outlined, color: Colors.white, size: 18),
-              ),
-              onPressed: () => setState(() => _isEditing = true),
-            )
-          else
-            Row(
-              children: [
-                TextButton(
-                  onPressed: _annulerEdition,
-                  child: const Text('Annuler', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _isLoading ? null : _sauvegarder,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE8B74B),
-                    foregroundColor: const Color(0xFF1A3A5C),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Color(0xFF1A3A5C), strokeWidth: 2))
-                      : const Text('Sauvegarder', style: TextStyle(fontWeight: FontWeight.w600)),
-                ),
-                const SizedBox(width: 16),
-              ],
-            ),
-        ],
-      ),
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              _buildPremiumHeader(),
-              const SizedBox(height: 24),
-              _buildProfileCompletion(),
-              const SizedBox(height: 16),
-              _buildPersonalInfoSection(),
-              const SizedBox(height: 16),
-              _buildSecuritySection(),
-              const SizedBox(height: 24),
-              _buildLogoutButton(),
-              const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // 🎨 PREMIUM HEADER (Badge Candidat SUPPRIMÉ)
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildPremiumHeader() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(24, 60, 24, 40),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF0F172A),
-            Color(0xFF1E3A8A),
-            Color(0xFF1E40AF),
-          ],
-        ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(32)),
-      ),
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: _showFullImage,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  TweenAnimationBuilder(
-                    duration: const Duration(seconds: 2),
-                    tween: Tween<double>(begin: 0, end: 1),
-                    builder: (context, double value, child) {
-                      return Container(
-                        width: 130,
-                        height: 130,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: SweepGradient(
-                            colors: [
-                              const Color(0xFFE8B74B).withOpacity(value),
-                              const Color(0xFFF5D78E),
-                              const Color(0xFFE8B74B).withOpacity(value),
-                            ],
-                            stops: const [0.0, 0.5, 1.0],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  Positioned(
-                    top: 4,
-                    child: Container(
-                      width: 122,
-                      height: 122,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    child: Container(
-                      width: 114,
-                      height: 114,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFE8B74B).withOpacity(0.3),
-                            blurRadius: 20,
-                            spreadRadius: 2,
-                          ),
-                        ],
-                      ),
-                      child: ClipOval(
-                        child: _isUploadingPhoto
-                            ? Container(
-                          color: const Color(0xFF1E3A8A),
-                          child: const Center(
-                            child: CircularProgressIndicator(color: Color(0xFFE8B74B), strokeWidth: 2.5),
-                          ),
-                        )
-                            : _getImageWidget(),
-                      ),
-                    ),
-                  ),
-                  if (_isEditing)
-                    Positioned(
-                      bottom: 4,
-                      right: 4,
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE8B74B),
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 3),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.3),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(Icons.camera_alt_rounded, size: 20, color: Color(0xFF0F172A)),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            '${_user!.prenom} ${_user!.nom}',
-            style: const TextStyle(
-              fontSize: 26,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _user!.email,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.7),
-              letterSpacing: 0.3,
-            ),
-          ),
-          // ❌ Badge "Candidat" SUPPRIMÉ ICI
-          const SizedBox(height: 14),
-          if ((_selectedVille ?? _user!.ville).isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withOpacity(0.2)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFFE8B74B)),
-                  const SizedBox(width: 6),
-                  Text(
-                    _selectedVille ?? (_user!.ville.isNotEmpty ? _user!.ville : 'Non spécifiée'),
-                    style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // 📊 PROFILE COMPLETION
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildProfileCompletion() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF1A3A5C).withOpacity(0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8B74B).withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.trending_up_rounded, size: 20, color: Color(0xFFE8B74B)),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Profil complété',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1A3A5C)),
-                  ),
-                ],
-              ),
-              Text(
-                '$_profileCompletion%',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFE8B74B),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: LinearProgressIndicator(
-              value: _profileCompletion / 100,
-              backgroundColor: Colors.grey.shade200,
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFE8B74B)),
-              minHeight: 8,
-            ),
-          ),
-          if (_profileCompletion < 100) ...[
-            const SizedBox(height: 12),
-            Text(
-              _getCompletionMessage(),
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  String _getCompletionMessage() {
-    if (_profileCompletion < 50) return 'Complétez votre profil pour augmenter vos chances';
-    if (_profileCompletion < 80) return 'Presque là ! Ajoutez quelques détails supplémentaires';
-    return 'Excellent ! Votre profil est presque parfait';
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // 👤 PERSONAL INFO SECTION
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildPersonalInfoSection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF1A3A5C).withOpacity(0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 4,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8B74B),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Informations personnelles',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A3A5C)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(child: _buildPremiumField(label: 'Nom', controller: _nomController, icon: Icons.person_outline, isEditing: _isEditing)),
-              const SizedBox(width: 12),
-              Expanded(child: _buildPremiumField(label: 'Prénom', controller: _prenomController, icon: Icons.person_outline, isEditing: _isEditing)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildPremiumField(label: 'Email', controller: _emailController, icon: Icons.email_outlined, keyboardType: TextInputType.emailAddress, isEditing: _isEditing),
-          const SizedBox(height: 16),
-          _buildPremiumField(label: 'Téléphone', controller: _telephoneController, icon: Icons.phone_outlined, keyboardType: TextInputType.phone, isEditing: _isEditing),
-          const SizedBox(height: 16),
-          _buildPremiumVilleField(isEditing: _isEditing),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPremiumField({
-    required String label,
-    required TextEditingController controller,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-    required bool isEditing,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label.toUpperCase(),
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8), letterSpacing: 1.2),
-        ),
-        const SizedBox(height: 8),
-        if (isEditing)
-          TextField(
-            controller: controller,
-            keyboardType: keyboardType,
-            style: const TextStyle(fontSize: 14, color: Color(0xFF1A3A5C), fontWeight: FontWeight.w500),
-            decoration: InputDecoration(
-              prefixIcon: Icon(icon, size: 18, color: const Color(0xFF64748B)),
-              filled: true,
-              fillColor: const Color(0xFFF8FAFC),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: BorderSide.none,
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE8B74B), width: 2),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            ),
-          )
-        else
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                Icon(icon, size: 18, color: const Color(0xFF64748B)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    controller.text.isEmpty ? 'Non renseigné' : controller.text,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: controller.text.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF1A3A5C),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildPremiumVilleField({required bool isEditing}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'VILLE',
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8), letterSpacing: 1.2),
-        ),
-        const SizedBox(height: 8),
-        if (isEditing)
-          DropdownButtonFormField<String>(
-            value: _selectedVille,
-            hint: const Text('Sélectionner une ville', style: TextStyle(color: Color(0xFF94A3B8))),
-            decoration: InputDecoration(
-              prefixIcon: const Icon(Icons.location_on_outlined, size: 18, color: Color(0xFF64748B)),
-              filled: true,
-              fillColor: const Color(0xFFF8FAFC),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE8B74B), width: 2),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            ),
-            items: _villes.map((v) => DropdownMenuItem<String>(
-              value: v,
-              child: Text(v, style: const TextStyle(color: Color(0xFF1A3A5C))),
-            )).toList(),
-            onChanged: (val) {
-              setState(() {
-                _selectedVille = val;
-              });
-            },
-            isExpanded: true,
-          )
-        else
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.location_on_outlined, size: 18, color: Color(0xFF64748B)),
-                const SizedBox(width: 12),
-                Text(
-                  _selectedVille ?? (_user!.ville.isNotEmpty ? _user!.ville : 'Non spécifiée'),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: (_selectedVille ?? _user!.ville).isNotEmpty ? const Color(0xFF1A3A5C) : const Color(0xFF94A3B8),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // 🔐 SECURITY SECTION (2FA SUPPRIMÉ)
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildSecuritySection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF1A3A5C).withOpacity(0.06),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 4,
-                height: 22,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8B74B),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Sécurité',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A3A5C)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          _buildSecurityItem(
-            icon: Icons.lock_outline_rounded,
-            title: 'Changer le mot de passe',
-            subtitle: 'Modifiez votre mot de passe régulièrement',
-            onTap: _showChangePasswordSheet,
-            color: const Color(0xFF1A3A5C),
-          ),
-          // ❌ Authentification à deux facteurs SUPPRIMÉE
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSecurityItem({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-    required Color color,
-    bool comingSoon = false,
-  }) {
-    return InkWell(
-      onTap: comingSoon ? null : onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, size: 22, color: color),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF1A3A5C))),
-                      if (comingSoon) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text('Bientôt', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // 🚪 LOGOUT BUTTON
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildLogoutButton() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: InkWell(
-        onTap: _confirmerDeconnexion,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 18),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Colors.red.shade50, Colors.red.shade100],
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.red.shade200),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.logout_rounded, color: Colors.red.shade600, size: 22),
-              const SizedBox(width: 12),
-              Text(
-                'Se déconnecter',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.red.shade700,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // 🖼️ IMAGE WIDGET
-  // ─────────────────────────────────────────────────────────────
-  Widget _getImageWidget() {
-    if (_photoUrl != null && _photoUrl!.isNotEmpty) {
-      return Image.network(
-        _photoUrl!,
-        fit: BoxFit.cover,
-        width: 114,
-        height: 114,
-        gaplessPlayback: true,
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return Container(
-            color: const Color(0xFF1E3A8A),
-            child: const Center(child: CircularProgressIndicator(color: Color(0xFFE8B74B), strokeWidth: 2)),
-          );
-        },
-        errorBuilder: (_, __, ___) => _buildInitials(),
-      );
-    }
-    if (kIsWeb && _imageBytes != null) return Image.memory(_imageBytes!, fit: BoxFit.cover);
-    if (!kIsWeb && _imageFile != null) return Image.file(_imageFile!, fit: BoxFit.cover);
-    return _buildInitials();
-  }
-
-  Widget _buildInitials() {
-    final initiales = '${_user!.prenom.isNotEmpty ? _user!.prenom[0] : ''}${_user!.nom.isNotEmpty ? _user!.nom[0] : ''}'.toUpperCase();
-    return Container(
-      color: const Color(0xFF1E3A8A),
-      child: Center(
-        child: Text(
-          initiales,
-          style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Color(0xFFE8B74B), letterSpacing: 2),
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  //  FULL SCREEN IMAGE
-  // ─────────────────────────────────────────────────────────────
-  void _showFullImage() {
-    if (_photoUrl == null && _imageFile == null && _imageBytes == null) return;
-
-    showDialog(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(40),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Container(
-              width: 300,
-              height: 300,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black54,
-                    blurRadius: 40,
-                    spreadRadius: 15,
-                  ),
-                ],
-              ),
-              child: ClipOval(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFE8B74B), Color(0xFFF5D78E)],
-                    ),
-                  ),
-                  child: ClipOval(
-                    child: InteractiveViewer(
-                      panEnabled: true,
-                      minScale: 0.5,
-                      maxScale: 4.0,
-                      child: _getImageWidget(),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 20,
-              right: 20,
-              child: GestureDetector(
-                onTap: () => Navigator.pop(ctx),
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
-                    shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 8)],
-                  ),
-                  child: const Icon(Icons.close, color: Color(0xFF1A3A5C), size: 24),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // 🔑 CHANGE PASSWORD
-  // ─────────────────────────────────────────────────────────────
-  void _showChangePasswordSheet() {
-    final ancienCtrl = TextEditingController();
-    final nouveauCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
-    bool obscureAncien = true, obscureNouveau = true, obscureConfirm = true;
-    bool loading = false;
-
+  // ── modals ────────────────────────────────────────────────────
+  void _showChangeEmailSheet() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: const Color(0xFFE0E0E0), borderRadius: BorderRadius.circular(2)))),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Container(width: 4, height: 20, decoration: BoxDecoration(color: const Color(0xFFE8B74B), borderRadius: BorderRadius.circular(2))),
-                    const SizedBox(width: 10),
-                    const Text('Changer le mot de passe', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A3A5C))),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                _buildPasswordField(ancienCtrl, 'Ancien mot de passe', obscureAncien, (v) => setModalState(() => obscureAncien = v)),
-                const SizedBox(height: 14),
-                _buildPasswordField(nouveauCtrl, 'Nouveau mot de passe', obscureNouveau, (v) => setModalState(() => obscureNouveau = v)),
-                const SizedBox(height: 14),
-                _buildPasswordField(confirmCtrl, 'Confirmer', obscureConfirm, (v) => setModalState(() => obscureConfirm = v)),
-                const SizedBox(height: 28),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1A3A5C),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                    onPressed: loading
-                        ? null
-                        : () async {
-                      if (ancienCtrl.text.isEmpty || nouveauCtrl.text.isEmpty || confirmCtrl.text.isEmpty) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Tous les champs sont obligatoires')));
-                        return;
-                      }
-                      if (nouveauCtrl.text != confirmCtrl.text) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Les mots de passe ne correspondent pas')));
-                        return;
-                      }
-                      if (nouveauCtrl.text.length < 6) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Minimum 6 caractères requis')));
-                        return;
-                      }
-                      setModalState(() => loading = true);
-                      try {
-                        await AuthService.changePassword(ancienMotDePasse: ancienCtrl.text, nouveauMotDePasse: nouveauCtrl.text);
-                        Navigator.pop(ctx);
-                        _showSuccess('Mot de passe changé ✅');
-                      } catch (e) {
-                        String msg = 'Erreur lors du changement';
-                        if (e.toString().contains('400')) msg = 'Ancien mot de passe incorrect.';
-                        else if (e.toString().contains('401')) msg = 'Session expirée. Reconnectez-vous.';
-                        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(msg)));
-                      } finally {
-                        setModalState(() => loading = false);
-                      }
-                    },
-                    child: loading
-                        ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text('Confirmer', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-            ),
+      builder: (_) => _EmailChangeSheet(
+        onSuccess: () { _showSuccess('Email mis à jour ✅'); _chargerProfil(); },
+      ),
+    );
+  }
+
+  void _showChangePasswordSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PasswordChangeSheet(
+        onSuccess: () => _showSuccess('Mot de passe changé ✅'),
+      ),
+    );
+  }
+
+  void _confirmLogout() {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Déconnexion',
+            style: TextStyle(color: _navy, fontWeight: FontWeight.bold)),
+        content: const Text('Êtes-vous sûr de vouloir vous déconnecter ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await StorageService.logout();
+              if (!mounted) return;
+              Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Déconnecter', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── BUILD PRINCIPAL ───────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    if (_pageLoading) return _buildLoader();
+    if (_user == null) return _buildErrorState();
+
+    return Scaffold(
+      backgroundColor: _bg,
+      // ── Barre d'actions fixe en haut (pas de SliverAppBar)
+      // On utilise un Stack pour avoir le header + une AppBar transparente
+      body: FadeTransition(
+        opacity: _fadeAnim,
+        child: NestedScrollView(
+          headerSliverBuilder: (context, _) => [_buildSliverHeader()],
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+            child: Column(children: [
+              _buildCompletionCard(),
+              const SizedBox(height: 16),
+              _buildInfoCard(),
+              const SizedBox(height: 16),
+              _buildSecurityCard(),
+              const SizedBox(height: 16),
+              _buildLogoutButton(),
+            ]),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildPasswordField(TextEditingController ctrl, String label, bool obscure, ValueChanged<bool> onToggle) {
+  // ── HEADER (SliverAppBar) ─────────────────────────────────────
+  Widget _buildSliverHeader() {
+    return SliverAppBar(
+      expandedHeight: 290,
+      pinned: true,
+      automaticallyImplyLeading: false,
+      backgroundColor: const Color(0xFF1E3A8A),
+      // ── AppBar actions : toujours visible même scrollé
+      titleSpacing: 0,
+      title: Row(
+        children: [
+          // Bouton retour
+          IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 18),
+            onPressed: () => Navigator.pop(context),
+          ),
+          const Spacer(),
+          // ── Mode lecture : bouton Modifier
+          if (!_isEditing)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: OutlinedButton.icon(
+                onPressed: () => setState(() => _isEditing = true),
+                icon: const Icon(Icons.edit_outlined, size: 15, color: _gold),
+                label: const Text('Modifier',
+                    style: TextStyle(color: _gold, fontWeight: FontWeight.w600, fontSize: 13)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: _gold, width: 1.5),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  minimumSize: Size.zero,
+                ),
+              ),
+            ),
+          // ── Mode édition : Annuler + Confirmer côte à côte
+          if (_isEditing) ...[
+            TextButton(
+              onPressed: _annuler,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                minimumSize: Size.zero,
+              ),
+              child: const Text('Annuler',
+                  style: TextStyle(color: Colors.white70, fontSize: 13)),
+            ),
+            const SizedBox(width: 4),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ElevatedButton(
+                onPressed: _isSaving ? null : _sauvegarder,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _gold,
+                  foregroundColor: _navy,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  minimumSize: Size.zero,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  elevation: 0,
+                ),
+                child: _isSaving
+                    ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(color: _navy, strokeWidth: 2))
+                    : const Text('Confirmer ✓',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              ),
+            ),
+          ],
+        ],
+      ),
+      flexibleSpace: FlexibleSpaceBar(
+        collapseMode: CollapseMode.parallax,
+        background: _buildHeaderBackground(),
+      ),
+    );
+  }
+
+  Widget _buildHeaderBackground() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F2460), Color(0xFF1E40AF), Color(0xFF3B82F6)],
+        ),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: 48), // espace pour la titleBar
+            // Avatar
+            Stack(
+              alignment: Alignment.center,
+              children: [
+                Container(
+                  width: 106, height: 106,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: _gold, width: 3),
+                    boxShadow: [BoxShadow(color: _gold.withValues(alpha: 0.35),
+                        blurRadius: 18, spreadRadius: 2)],
+                  ),
+                ),
+                Container(
+                  width: 100, height: 100,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: const BoxDecoration(shape: BoxShape.circle),
+                  child: _isUploadingPhoto
+                      ? const ColoredBox(color: Color(0xFF1E3A8A),
+                      child: Center(child: CircularProgressIndicator(
+                          color: _gold, strokeWidth: 2)))
+                      : _buildAvatar(100),
+                ),
+                if (_isEditing)
+                  Positioned(
+                    bottom: 4, right: 4,
+                    child: GestureDetector(
+                      onTap: _pickImage,
+                      child: Container(
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: _gold, shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 6)],
+                        ),
+                        child: const Icon(Icons.camera_alt_rounded, size: 15, color: _navy),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '${_user!.prenom} ${_user!.nom}',
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold,
+                  color: Colors.white, letterSpacing: 0.3),
+            ),
+            const SizedBox(height: 4),
+            Text(_user!.email,
+                style: const TextStyle(fontSize: 12, color: Colors.white60)),
+            const SizedBox(height: 8),
+            if ((_selectedVille ?? _user!.ville).isNotEmpty)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.location_on_outlined, size: 13, color: _gold),
+                  const SizedBox(width: 4),
+                  Text(_selectedVille ?? _user!.ville,
+                      style: const TextStyle(fontSize: 12, color: Colors.white,
+                          fontWeight: FontWeight.w500)),
+                ]),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── COMPLETION CARD ───────────────────────────────────────────
+  Widget _buildCompletionCard() {
+    final pct = _profileCompletion;
+    final color = pct < 50
+        ? Colors.red.shade400
+        : pct < 80
+        ? Colors.orange
+        : const Color(0xFF22C55E);
+    return _card(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Row(children: [
+          _iconBox(Icons.trending_up_rounded, _gold),
+          const SizedBox(width: 12),
+          const Text('Profil complété',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _navy)),
+        ]),
+        Text('$pct%',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: color)),
+      ]),
+      const SizedBox(height: 14),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: LinearProgressIndicator(
+          value: pct / 100,
+          backgroundColor: Colors.grey.shade200,
+          valueColor: AlwaysStoppedAnimation<Color>(color),
+          minHeight: 8,
+        ),
+      ),
+      if (pct < 100) ...[
+        const SizedBox(height: 8),
+        Text(
+          pct < 50
+              ? 'Complétez votre profil pour maximiser vos chances !'
+              : 'Encore quelques infos et votre profil sera parfait 🎯',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+        ),
+      ],
+    ]));
+  }
+
+  // ── INFO CARD ─────────────────────────────────────────────────
+  Widget _buildInfoCard() {
+    return _card(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _sectionTitle('Informations personnelles', Icons.person_outline),
+      const SizedBox(height: 20),
+      Row(children: [
+        Expanded(child: _field(label: 'NOM', ctrl: _nomCtrl, icon: Icons.badge_outlined)),
+        const SizedBox(width: 12),
+        Expanded(child: _field(label: 'PRÉNOM', ctrl: _prenomCtrl, icon: Icons.person_outline)),
+      ]),
+      const SizedBox(height: 14),
+      _emailRow(),
+      const SizedBox(height: 14),
+      _field(label: 'TÉLÉPHONE', ctrl: _telCtrl, icon: Icons.phone_outlined,
+          keyboard: TextInputType.phone),
+      const SizedBox(height: 14),
+      _villeField(),
+    ]));
+  }
+
+  Widget _emailRow() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('EMAIL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+          color: Color(0xFF94A3B8), letterSpacing: 1.2)),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(children: [
+          const Icon(Icons.email_outlined, size: 18, color: Color(0xFF64748B)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(_user!.email,
+              style: const TextStyle(fontSize: 14, color: _navy, fontWeight: FontWeight.w500))),
+          if (_isEditing)
+            GestureDetector(
+              onTap: _showChangeEmailSheet,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: _gold.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _gold.withValues(alpha: 0.4)),
+                ),
+                child: const Text('Changer',
+                    style: TextStyle(fontSize: 12, color: _gold, fontWeight: FontWeight.bold)),
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.verified_rounded, size: 12, color: Color(0xFF22C55E)),
+                SizedBox(width: 4),
+                Text('Vérifié', style: TextStyle(fontSize: 11, color: Color(0xFF22C55E),
+                    fontWeight: FontWeight.w600)),
+              ]),
+            ),
+        ]),
+      ),
+    ]);
+  }
+
+  // ── SECURITY CARD ─────────────────────────────────────────────
+  Widget _buildSecurityCard() {
+    return _card(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _sectionTitle('Sécurité', Icons.shield_outlined),
+      const SizedBox(height: 16),
+      _securityTile(
+        icon: Icons.lock_outline_rounded,
+        title: 'Changer le mot de passe',
+        subtitle: 'Mettez à jour votre mot de passe régulièrement',
+        onTap: _showChangePasswordSheet,
+      ),
+    ]));
+  }
+
+  Widget _buildLogoutButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _confirmLogout,
+        icon: const Icon(Icons.logout_rounded, color: Colors.red, size: 18),
+        label: const Text('Se déconnecter',
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          side: const BorderSide(color: Colors.red, width: 1.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    );
+  }
+
+  // ── LOADER / ERROR ────────────────────────────────────────────
+  Widget _buildLoader() => const Scaffold(
+    backgroundColor: _bg,
+    body: Center(child: CircularProgressIndicator(color: _gold, strokeWidth: 3)),
+  );
+
+  Widget _buildErrorState() => Scaffold(
+    backgroundColor: _bg,
+    body: Center(child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.error_outline, size: 60, color: Colors.grey.shade400),
+        const SizedBox(height: 16),
+        const Text('Impossible de charger le profil',
+            style: TextStyle(color: _navy, fontWeight: FontWeight.w600, fontSize: 16)),
+        const SizedBox(height: 20),
+        ElevatedButton.icon(
+          onPressed: _chargerProfil,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Réessayer'),
+          style: ElevatedButton.styleFrom(backgroundColor: _navy),
+        ),
+      ],
+    )),
+  );
+
+  // ── HELPERS ───────────────────────────────────────────────────
+  Widget _card({required Widget child}) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06),
+          blurRadius: 16, offset: const Offset(0, 6))],
+    ),
+    child: child,
+  );
+
+  Widget _sectionTitle(String t, IconData icon) => Row(children: [
+    _iconBox(icon, _navy),
+    const SizedBox(width: 12),
+    Text(t, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _navy)),
+  ]);
+
+  Widget _iconBox(IconData icon, Color color) => Container(
+    padding: const EdgeInsets.all(8),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(10),
+    ),
+    child: Icon(icon, size: 18, color: color),
+  );
+
+  Widget _field({
+    required String label,
+    required TextEditingController ctrl,
+    required IconData icon,
+    TextInputType keyboard = TextInputType.text,
+  }) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+          color: Color(0xFF94A3B8), letterSpacing: 1.2)),
+      const SizedBox(height: 8),
+      _isEditing
+          ? TextField(
+        controller: ctrl,
+        keyboardType: keyboard,
+        style: const TextStyle(fontSize: 14, color: _navy, fontWeight: FontWeight.w500),
+        decoration: InputDecoration(
+          prefixIcon: Icon(icon, size: 18, color: const Color(0xFF64748B)),
+          filled: true, fillColor: const Color(0xFFF8FAFC),
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: _gold, width: 2)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        ),
+      )
+          : Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(children: [
+          Icon(icon, size: 18, color: const Color(0xFF64748B)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(
+            ctrl.text.isEmpty ? 'Non renseigné' : ctrl.text,
+            style: TextStyle(
+              fontSize: 14,
+              color: ctrl.text.isEmpty ? const Color(0xFF94A3B8) : _navy,
+              fontWeight: FontWeight.w500,
+            ),
+          )),
+        ]),
+      ),
+    ]);
+  }
+
+  Widget _villeField() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('VILLE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+          color: Color(0xFF94A3B8), letterSpacing: 1.2)),
+      const SizedBox(height: 8),
+      _isEditing
+          ? DropdownButtonFormField<String>(
+        value: _selectedVille,
+        hint: const Text('Sélectionner', style: TextStyle(color: Color(0xFF94A3B8))),
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.location_on_outlined, size: 18,
+              color: Color(0xFF64748B)),
+          filled: true, fillColor: const Color(0xFFF8FAFC),
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: _gold, width: 2)),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        ),
+        items: _villes.map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+        onChanged: (val) => setState(() => _selectedVille = val),
+        isExpanded: true,
+      )
+          : Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12)),
+        child: Row(children: [
+          const Icon(Icons.location_on_outlined, size: 18, color: Color(0xFF64748B)),
+          const SizedBox(width: 10),
+          Text(
+            _selectedVille ?? (_user!.ville.isNotEmpty ? _user!.ville : 'Non spécifiée'),
+            style: TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w500,
+              color: (_selectedVille ?? _user!.ville).isNotEmpty
+                  ? _navy : const Color(0xFF94A3B8),
+            ),
+          ),
+        ]),
+      ),
+    ]);
+  }
+
+  Widget _securityTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(children: [
+          _iconBox(icon, _navy),
+          const SizedBox(width: 14),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _navy)),
+            const SizedBox(height: 2),
+            Text(subtitle,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8))),
+          ])),
+          const Icon(Icons.chevron_right_rounded, color: Color(0xFFCBD5E1)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildAvatar(double size) {
+    if (_photoUrl != null && _photoUrl!.isNotEmpty) {
+      return Image.network(_photoUrl!, fit: BoxFit.cover, width: size, height: size,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => _buildInitials(),
+        loadingBuilder: (_, child, p) => p == null ? child
+            : const ColoredBox(color: Color(0xFF1E3A8A),
+            child: Center(child: CircularProgressIndicator(
+                color: _gold, strokeWidth: 2))),
+      );
+    }
+    if (kIsWeb && _imageBytes != null) {
+      return Image.memory(_imageBytes!, fit: BoxFit.cover);
+    }
+    if (!kIsWeb && _imageFile != null) {
+      return Image.file(_imageFile!, fit: BoxFit.cover);
+    }
+    return _buildInitials();
+  }
+
+  Widget _buildInitials() {
+    final i = '${_user!.prenom.isNotEmpty ? _user!.prenom[0] : ''}'
+        '${_user!.nom.isNotEmpty ? _user!.nom[0] : ''}'.toUpperCase();
+    return ColoredBox(
+      color: const Color(0xFF1E3A8A),
+      child: Center(child: Text(i,
+          style: const TextStyle(fontSize: 30, fontWeight: FontWeight.bold,
+              color: _gold, letterSpacing: 2))),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// WIDGET : Changement d'email
+// ════════════════════════════════════════════════════════════════
+class _EmailChangeSheet extends StatefulWidget {
+  final VoidCallback onSuccess;
+  const _EmailChangeSheet({required this.onSuccess});
+
+  @override
+  State<_EmailChangeSheet> createState() => _EmailChangeSheetState();
+}
+
+class _EmailChangeSheetState extends State<_EmailChangeSheet> {
+  final _emailCtrl = TextEditingController();
+  final _codeCtrl  = TextEditingController();
+  bool _step1 = true;
+  bool _loading = false;
+
+  static const _gold = Color(0xFFE8B74B);
+  static const _navy = Color(0xFF1A3A5C);
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _codeCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Center(child: Container(width: 40, height: 4,
+                  decoration: BoxDecoration(color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 20),
+              const Text('Changer l\'email',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: _navy)),
+              const SizedBox(height: 6),
+              Text(
+                _step1
+                    ? 'Entrez votre nouvel email. Un code sera envoyé.'
+                    : 'Entrez le code reçu sur ${_emailCtrl.text}',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+              ),
+              const SizedBox(height: 20),
+              if (_step1) ...[
+                _inputField(_emailCtrl, 'Nouvel email', Icons.email_outlined,
+                    keyboard: TextInputType.emailAddress),
+                const SizedBox(height: 20),
+                _submitBtn('Envoyer le code', _step1Done),
+              ] else ...[
+                _inputField(_codeCtrl, 'Code à 6 chiffres', Icons.pin_outlined,
+                    keyboard: TextInputType.number),
+                const SizedBox(height: 20),
+                _submitBtn('Confirmer', _step2Done),
+                const SizedBox(height: 8),
+                Center(child: TextButton(
+                  onPressed: () => setState(() { _step1 = true; _codeCtrl.clear(); }),
+                  child: const Text('← Changer l\'email saisi',
+                      style: TextStyle(color: _navy)),
+                )),
+              ],
+              const SizedBox(height: 8),
+            ]),
+      ),
+    );
+  }
+
+  Future<void> _step1Done() async {
+    final email = _emailCtrl.text.trim();
+    if (!RegExp(r'^[\w.\-]+@[\w.\-]+\.\w+$').hasMatch(email)) {
+      _snack('Email invalide'); return;
+    }
+    setState(() => _loading = true);
+    try {
+      await AuthService.sendEmailChangeCode(email);
+      if (mounted) setState(() { _loading = false; _step1 = false; });
+    } catch (e) {
+      if (mounted) { setState(() => _loading = false); _snack('Erreur: $e'); }
+    }
+  }
+
+  Future<void> _step2Done() async {
+    if (_codeCtrl.text.trim().isEmpty) return;
+    setState(() => _loading = true);
+    try {
+      await AuthService.confirmEmailChange(
+        nouvelEmail: _emailCtrl.text.trim(),
+        code: _codeCtrl.text.trim(),
+      );
+      if (mounted) { Navigator.pop(context); widget.onSuccess(); }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _loading = false);
+        _snack('Code invalide ou expiré');
+      }
+    }
+  }
+
+  void _snack(String msg) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
+
+  Widget _inputField(TextEditingController ctrl, String label, IconData icon,
+      {TextInputType keyboard = TextInputType.text}) {
     return TextField(
-      controller: ctrl,
-      obscureText: obscure,
-      style: const TextStyle(color: Color(0xFF1A3A5C)),
+      controller: ctrl, keyboardType: keyboard,
+      style: const TextStyle(color: _navy),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+        prefixIcon: Icon(icon, color: const Color(0xFF64748B), size: 18),
+        filled: true, fillColor: const Color(0xFFF8FAFC),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: _gold, width: 2)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      ),
+    );
+  }
+
+  Widget _submitBtn(String label, VoidCallback onTap) => SizedBox(
+    width: double.infinity, height: 50,
+    child: ElevatedButton(
+      onPressed: _loading ? null : onTap,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _navy,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        elevation: 0,
+      ),
+      child: _loading
+          ? const SizedBox(width: 22, height: 22,
+          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+          : Text(label,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600,
+              color: Colors.white)),
+    ),
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// WIDGET : Changement de mot de passe
+// ════════════════════════════════════════════════════════════════
+class _PasswordChangeSheet extends StatefulWidget {
+  final VoidCallback onSuccess;
+  const _PasswordChangeSheet({required this.onSuccess});
+
+  @override
+  State<_PasswordChangeSheet> createState() => _PasswordChangeSheetState();
+}
+
+class _PasswordChangeSheetState extends State<_PasswordChangeSheet> {
+  final _ancienCtrl  = TextEditingController();
+  final _nouveauCtrl = TextEditingController();
+  final _confirmCtrl = TextEditingController();
+  bool _obsA = true, _obsN = true, _obsC = true;
+  bool _loading = false;
+
+  static const _gold = Color(0xFFE8B74B);
+  static const _navy = Color(0xFF1A3A5C);
+
+  @override
+  void dispose() {
+    _ancienCtrl.dispose();
+    _nouveauCtrl.dispose();
+    _confirmCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Center(child: Container(width: 40, height: 4,
+                  decoration: BoxDecoration(color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 20),
+              const Text('Changer le mot de passe',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: _navy)),
+              const SizedBox(height: 20),
+              _pwdField(_ancienCtrl, 'Ancien mot de passe', _obsA,
+                      (v) => setState(() => _obsA = v)),
+              const SizedBox(height: 12),
+              _pwdField(_nouveauCtrl, 'Nouveau mot de passe', _obsN,
+                      (v) => setState(() => _obsN = v)),
+              const SizedBox(height: 12),
+              _pwdField(_confirmCtrl, 'Confirmer le mot de passe', _obsC,
+                      (v) => setState(() => _obsC = v)),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity, height: 50,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _navy,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                  ),
+                  child: _loading
+                      ? const SizedBox(width: 22, height: 22,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Confirmer',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600,
+                          color: Colors.white)),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ]),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    if (_ancienCtrl.text.isEmpty || _nouveauCtrl.text.isEmpty || _confirmCtrl.text.isEmpty) {
+      _snack('Tous les champs sont obligatoires'); return;
+    }
+    if (_nouveauCtrl.text != _confirmCtrl.text) {
+      _snack('Les mots de passe ne correspondent pas'); return;
+    }
+    if (_nouveauCtrl.text.length < 6) {
+      _snack('Minimum 6 caractères'); return;
+    }
+    setState(() => _loading = true);
+    try {
+      await AuthService.changePassword(
+        ancienMotDePasse: _ancienCtrl.text,
+        nouveauMotDePasse: _nouveauCtrl.text,
+      );
+      if (mounted) { Navigator.pop(context); widget.onSuccess(); }
+    } catch (e) {
+      final msg = e.toString().contains('400')
+          ? 'Ancien mot de passe incorrect'
+          : e.toString().contains('401')
+          ? 'Session expirée'
+          : 'Erreur serveur';
+      if (mounted) { setState(() => _loading = false); _snack(msg); }
+    }
+  }
+
+  void _snack(String msg) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
+
+  Widget _pwdField(TextEditingController ctrl, String label,
+      bool obs, ValueChanged<bool> onToggle) {
+    return TextField(
+      controller: ctrl, obscureText: obs,
+      style: const TextStyle(color: _navy),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
         prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF64748B), size: 18),
         suffixIcon: IconButton(
-          icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined, size: 18, color: const Color(0xFF94A3B8)),
-          onPressed: () => onToggle(!obscure),
+          icon: Icon(obs ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+              size: 18, color: const Color(0xFF94A3B8)),
+          onPressed: () => onToggle(!obs),
         ),
-        filled: true,
-        fillColor: const Color(0xFFF8FAFC),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE8B74B), width: 2)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        filled: true, fillColor: const Color(0xFFF8FAFC),
+        border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+        focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: _gold, width: 2)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       ),
     );
   }
